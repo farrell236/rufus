@@ -11,9 +11,11 @@
 #include "rufus/backend/block_device_backend.hpp"
 
 #include <fcntl.h>
+// glibc's mount header must precede linux/fs.h so linux/libc-compat.h can
+// suppress the kernel MS_* definitions that would collide with its enum.
+#include <sys/mount.h>
 #include <linux/fs.h>
 #include <sys/ioctl.h>
-#include <sys/mount.h>
 #include <sys/stat.h>
 #include <sys/sysmacros.h>
 #include <sys/types.h>
