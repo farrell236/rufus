@@ -30,9 +30,9 @@
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
-#include <process.h>
-#include <shellapi.h>
 #include <windows.h>
+#include <shellapi.h>
+#include <process.h>
 #else
 #include <cerrno>
 #include <csignal>

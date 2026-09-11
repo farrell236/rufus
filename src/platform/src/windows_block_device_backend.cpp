@@ -11,11 +11,7 @@
 #define NOMINMAX
 #include <windows.h>
 #include <shellapi.h>
-
 #include <process.h>
-
-#include <initguid.h>
-#include <ntddstor.h>
 #include <setupapi.h>
 #include <winioctl.h>
 

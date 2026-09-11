@@ -924,7 +924,8 @@ void writeUdfFixture(const std::filesystem::path& path) {
     }
     bytes[offset + 4U] = static_cast<unsigned char>(checksum);
   };
-  auto writeRecognition = [&bytes](const std::size_t sector, const std::string& identifier) {
+  auto writeRecognition = [&bytes, blockSize](const std::size_t sector,
+                                               const std::string& identifier) {
     const std::size_t offset = sector * blockSize;
     bytes[offset] = 0;
     std::copy(identifier.begin(), identifier.end(),
@@ -1042,7 +1043,8 @@ void writeJolietIsoFixture(const std::filesystem::path& path) {
     std::copy(name.begin(), name.end(), bytes.begin() + static_cast<std::ptrdiff_t>(offset + 33U));
     return length;
   };
-  auto descriptor = [&bytes](const std::size_t sector, const unsigned char type) {
+  auto descriptor = [&bytes, sectorSize](const std::size_t sector,
+                                          const unsigned char type) {
     const std::size_t offset = sector * sectorSize;
     bytes[offset] = type;
     const std::string identifier = "CD001";

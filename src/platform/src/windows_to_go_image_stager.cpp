@@ -35,10 +35,10 @@
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
-#include <process.h>
-#include <shellapi.h>
 #include <windows.h>
+#include <shellapi.h>
 #include <winioctl.h>
+#include <process.h>
 #else
 #include <fcntl.h>
 #include <signal.h>
@@ -792,8 +792,8 @@ std::string commandFailure(const std::string_view action,
          (detail.empty() ? std::string{} : ": " + detail);
 }
 
-std::filesystem::path mountedPath(const std::string& device) {
 #if defined(__APPLE__)
+std::filesystem::path mountedPath(const std::string& device) {
   const CommandResult info = runCommand({"diskutil", "info", device});
   if (info.exitCode != 0) {
     return {};
@@ -805,11 +805,8 @@ std::filesystem::path mountedPath(const std::string& device) {
   }
   const std::size_t end = info.output.find('\n', position);
   return trim(info.output.substr(position + field.size(), end - position - field.size()));
-#else
-  static_cast<void>(device);
-  return {};
-#endif
 }
+#endif
 
 class PosixWindowsToGoImageStager final : public WindowsToGoImageStager {
  public:

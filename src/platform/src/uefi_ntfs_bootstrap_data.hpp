@@ -6,11 +6,11 @@
 
 #pragma once
 
-#include <string_view>
-
 namespace rufus::backend::detail {
 
-inline constexpr std::string_view kUefiNtfsImageBase64[] = {
+// Keep the payload as pointers to string literals. Constructing thousands of
+// string_views here exhausts GCC's default constexpr-operation budget.
+inline constexpr const char* kUefiNtfsImageBase64[] = {
     "6zyQbWtmcy5mYXQAAgQBAAIAAgAI+AIAEAACAAAAAAAAAAAAgAApzJv+nlJVRlVTX0JPT1QgRkFUMTIgICAOH75bfKwiwHQL",
     "VrQOuwcAzRBe6/Ay5M0WzRnr/lRoaXMgaXMgbm90IGEgYm9vdGFibGUgZGlzay4gIFBsZWFzZSBpbnNlcnQgYSBib290YWJs",
     "ZSBmbG9wcHkgYW5kDQpwcmVzcyBhbnkga2V5IHRvIHRyeSBhZ2FpbiAuLi4gDQoAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
