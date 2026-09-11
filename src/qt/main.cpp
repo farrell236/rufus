@@ -24,7 +24,8 @@
 
 namespace {
 
-constexpr int kAdaptiveWindowProbeDelayMilliseconds = 50;
+constexpr int kAdaptiveWindowProbePollMilliseconds = 25;
+constexpr int kAdaptiveWindowProbeTimeoutMilliseconds = 3000;
 
 class AdaptiveWindowProbe final
     : public std::enable_shared_from_this<AdaptiveWindowProbe> {
@@ -34,59 +35,61 @@ class AdaptiveWindowProbe final
       : application_(application), window_(window) {}
 
   void advance() {
-    if (!fixedAtCurrentSize()) {
-      fail("Rufus++ must be fixed to its content-wrapped size");
-      return;
-    }
-
-    switch (stage_++) {
+    switch (stage_) {
       case 0:
+        if (!waitFor(fixedAtCurrentSize(),
+                     "Rufus++ must be fixed to its content-wrapped size")) {
+          return;
+        }
         if (!findControls()) {
           fail("Unable to find the adaptive-window controls");
           return;
         }
         baselineSize_ = window_.size();
         driveAdvanced_->setChecked(true);
-        queueNext();
+        beginStage(1);
         return;
       case 1:
-        if (window_.width() != baselineSize_.width() ||
-            window_.height() <= baselineSize_.height()) {
-          fail("Expanding drive properties did not grow the window vertically");
+        if (!waitFor(fixedAtCurrentSize() &&
+                         window_.width() == baselineSize_.width() &&
+                         window_.height() > baselineSize_.height(),
+                     "Expanding drive properties did not grow the window vertically")) {
           return;
         }
         driveAdvanced_->setChecked(false);
-        queueNext();
+        beginStage(2);
         return;
       case 2:
-        if (window_.size() != baselineSize_) {
-          fail("Collapsing drive properties did not restore the wrapped size");
+        if (!waitFor(fixedAtCurrentSize() && window_.size() == baselineSize_,
+                     "Collapsing drive properties did not restore the wrapped size")) {
           return;
         }
         formatAdvanced_->setChecked(false);
-        queueNext();
+        beginStage(3);
         return;
       case 3:
-        if (window_.width() != baselineSize_.width() ||
-            window_.height() >= baselineSize_.height()) {
-          fail("Collapsing format options did not shrink the window vertically");
+        if (!waitFor(fixedAtCurrentSize() &&
+                         window_.width() == baselineSize_.width() &&
+                         window_.height() < baselineSize_.height(),
+                     "Collapsing format options did not shrink the window vertically")) {
           return;
         }
         formatAdvanced_->setChecked(true);
-        queueNext();
+        beginStage(4);
         return;
       case 4:
-        if (window_.size() != baselineSize_) {
-          fail("Expanding format options did not restore the wrapped size");
+        if (!waitFor(fixedAtCurrentSize() && window_.size() == baselineSize_,
+                     "Expanding format options did not restore the wrapped size")) {
           return;
         }
         logButton_->click();
-        queueNext();
+        beginStage(5);
         return;
       case 5:
-        if (window_.width() != baselineSize_.width() ||
-            window_.height() <= baselineSize_.height()) {
-          fail("Showing the operation log did not grow the window vertically");
+        if (!waitFor(fixedAtCurrentSize() &&
+                         window_.width() == baselineSize_.width() &&
+                         window_.height() > baselineSize_.height(),
+                     "Showing the operation log did not grow the window vertically")) {
           return;
         }
         application_.exit(0);
@@ -117,10 +120,29 @@ class AdaptiveWindowProbe final
            logButton_ != nullptr;
   }
 
-  void queueNext() {
+  void queueProbe() {
     const auto self = shared_from_this();
-    QTimer::singleShot(kAdaptiveWindowProbeDelayMilliseconds, &application_,
+    QTimer::singleShot(kAdaptiveWindowProbePollMilliseconds, &application_,
                        [self] { self->advance(); });
+  }
+
+  void beginStage(const int stage) {
+    stage_ = stage;
+    stageWaitMilliseconds_ = 0;
+    queueProbe();
+  }
+
+  [[nodiscard]] bool waitFor(const bool condition, const char* failureMessage) {
+    if (condition) {
+      return true;
+    }
+    stageWaitMilliseconds_ += kAdaptiveWindowProbePollMilliseconds;
+    if (stageWaitMilliseconds_ >= kAdaptiveWindowProbeTimeoutMilliseconds) {
+      fail(failureMessage);
+    } else {
+      queueProbe();
+    }
+    return false;
   }
 
   void fail(const char* message) {
@@ -138,6 +160,7 @@ class AdaptiveWindowProbe final
   QToolButton* logButton_{};
   QSize baselineSize_;
   int stage_{};
+  int stageWaitMilliseconds_{};
 };
 
 }  // namespace
@@ -176,7 +199,7 @@ int main(int argc, char* argv[]) {
   std::shared_ptr<AdaptiveWindowProbe> sizingProbe;
   if (application.arguments().contains("--verify-window-sizing")) {
     sizingProbe = std::make_shared<AdaptiveWindowProbe>(application, window);
-    QTimer::singleShot(kAdaptiveWindowProbeDelayMilliseconds, &application,
+    QTimer::singleShot(kAdaptiveWindowProbePollMilliseconds, &application,
                        [sizingProbe] { sizingProbe->advance(); });
   }
 
