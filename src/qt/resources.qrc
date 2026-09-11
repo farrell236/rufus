@@ -1,0 +1,38 @@
+<RCC>
+  <qresource prefix="/rufus">
+    <file alias="icons/rufus-128.png">../../res/icons/rufus-128.png</file>
+    <file alias="icons/lang-24.png">../../res/icons/lang-24.png</file>
+    <file alias="icons/info-24.png">../../res/icons/info-24.png</file>
+    <file alias="icons/settings-24.png">../../res/icons/settings-24.png</file>
+    <file alias="icons/log-24.png">../../res/icons/log-24.png</file>
+    <file alias="icons/hash-24.png">../../res/icons/hash-24.png</file>
+    <file alias="icons/save-24.png">../../res/icons/save-24.png</file>
+    <file alias="icons/format-24.svg">../../res/icons/format-24.svg</file>
+    <file alias="freedos/COMMAND.COM">../../res/freedos/COMMAND.COM</file>
+    <file alias="freedos/KERNEL.SYS">../../res/freedos/KERNEL.SYS</file>
+    <file alias="freedos/DISPLAY.EXE">../../res/freedos/DISPLAY.EXE</file>
+    <file alias="freedos/KEYB.EXE">../../res/freedos/KEYB.EXE</file>
+    <file alias="freedos/KEYBOARD.SYS">../../res/freedos/KEYBOARD.SYS</file>
+    <file alias="freedos/KEYBRD2.SYS">../../res/freedos/KEYBRD2.SYS</file>
+    <file alias="freedos/KEYBRD3.SYS">../../res/freedos/KEYBRD3.SYS</file>
+    <file alias="freedos/KEYBRD4.SYS">../../res/freedos/KEYBRD4.SYS</file>
+    <file alias="freedos/MODE.COM">../../res/freedos/MODE.COM</file>
+    <file alias="uefi-md5/bootx64.efi">../../res/md5/bootx64.efi</file>
+    <file alias="uefi-md5/bootia32.efi">../../res/md5/bootia32.efi</file>
+    <file alias="uefi-md5/bootaa64.efi">../../res/md5/bootaa64.efi</file>
+    <file alias="uefi-md5/bootarm.efi">../../res/md5/bootarm.efi</file>
+    <file alias="uefi-md5/bootloongarch64.efi">../../res/md5/bootloongarch64.efi</file>
+    <file alias="uefi-md5/bootriscv64.efi">../../res/md5/bootriscv64.efi</file>
+    <file alias="uefi-shell/shellx64.efi">../../res/uefi-shell/26H1/shellx64.efi</file>
+    <file alias="uefi-shell/shellia32.efi">../../res/uefi-shell/26H1/shellia32.efi</file>
+    <file alias="uefi-shell/shellaa64.efi">../../res/uefi-shell/26H1/shellaa64.efi</file>
+    <file alias="uefi-shell/shellriscv64.efi">../../res/uefi-shell/26H1/shellriscv64.efi</file>
+    <file alias="uefi-shell/shellloongarch64.efi">../../res/uefi-shell/26H1/shellloongarch64.efi</file>
+    <file alias="uefi-shell/shellarm.efi">../../res/uefi-shell/25H1-arm32/shellarm.efi</file>
+    <file alias="uefi-shell/License.txt">../../res/uefi-shell/License.txt</file>
+    <file alias="uefi-shell/readme.txt">../../res/uefi-shell/readme.txt</file>
+    <file alias="secure-boot/dbx-v1.7.0-signed.zip">../../res/secure-boot/dbx-v1.7.0-signed.zip</file>
+    <file alias="secure-boot/License.txt">../../res/secure-boot/License.txt</file>
+    <file alias="secure-boot/readme.txt">../../res/secure-boot/readme.txt</file>
+  </qresource>
+</RCC>

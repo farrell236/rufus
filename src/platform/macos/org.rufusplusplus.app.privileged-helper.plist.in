@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>@RUFUSPP_MACOS_HELPER_IDENTIFIER@</string>
+  <key>BundleProgram</key>
+  <string>Contents/Resources/rufus-plus-plus-privileged-helper</string>
+  <key>AssociatedBundleIdentifiers</key>
+  <array>
+    <string>@RUFUSPP_MACOS_APP_IDENTIFIER@</string>
+  </array>
+  <key>MachServices</key>
+  <dict>
+    <key>@RUFUSPP_MACOS_HELPER_IDENTIFIER@</key>
+    <true/>
+  </dict>
+  <key>ProcessType</key>
+  <string>Interactive</string>
+</dict>
+</plist>

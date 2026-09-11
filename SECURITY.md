@@ -1,9 +1,23 @@
-# Reporting a security vulnerability
+# Security policy
 
-To report a **security** vulnerability for Rufus (i.e. an issue that you believe could lead to malicious actors being able to exploit the Rufus application), please e-mail support@akeo.ie.
+This project is a development prototype and must not yet be used to write
+production media. Guarded DD and staged ISO transports exist on macOS, Linux,
+and Windows, and Windows also exposes FFU application through DISM. Every path
+revalidates the source and whole removable target before destructive I/O, but
+the transports have not completed removable-hardware fault testing.
 
-Please do **NOT** use the e-mail above if you have a regular issue, such as a problem creating or using a bootable drive. Instead go back to https://github.com/pbatard/rufus/issues and create an issue using the regular *Issue Report* template.
+Unsigned macOS development builds keep START disabled. Signed builds delegate
+destructive I/O to a narrow `SMAppService` launch daemon that mutually
+authenticates the app, accepts an already-open source descriptor, and
+independently revalidates the target. Linux and Windows currently perform raw
+I/O in an explicitly elevated application process; moving those handles into
+equivalent least-privilege helpers remains release hardening. Do not use any
+development build against media containing important data.
 
-For any security vulnerability report, we kindly ask you to respect [responsible disclosure](https://en.wikipedia.org/wiki/Responsible_disclosure) practices.
+Please report suspected vulnerabilities privately through this repository's
+security-advisory feature. Do not send reports for this fork to the upstream
+Rufus maintainer unless the issue also affects the upstream project.
 
-In return, we will endeavour to respond to security vulnerability reports within 48 hours.
+Ordinary defects and feature requests should use the repository issue tracker.
+Please include the operating system, architecture, Qt version, build type, and
+steps needed to reproduce the problem.
