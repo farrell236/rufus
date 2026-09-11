@@ -1,0 +1,125 @@
+name: Publish Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version without the v prefix, for example 0.1.0
+        required: true
+        type: string
+      prerelease:
+        description: Mark the draft as a prerelease when it is published
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-release
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Validate release request
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.release.outputs.version }}
+      tag: ${{ steps.release.outputs.tag }}
+    steps:
+      - name: Checkout repository and tags
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Validate branch, version, and tag
+        id: release
+        shell: bash
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: |
+          if [[ "$GITHUB_REF" != "refs/heads/$DEFAULT_BRANCH" ]]; then
+            echo "Releases must be dispatched from the default branch ($DEFAULT_BRANCH)." >&2
+            exit 1
+          fi
+          if [[ ! "$RELEASE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9.-]+)?$ ]]; then
+            echo "Enter a version such as 0.1.0 without a v prefix." >&2
+            exit 1
+          fi
+          tag="v$RELEASE_VERSION"
+          if git show-ref --verify --quiet "refs/tags/$tag"; then
+            echo "Tag $tag already exists." >&2
+            exit 1
+          fi
+          echo "version=$RELEASE_VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+  packages:
+    needs: validate
+    uses: ./.github/workflows/package-build.yml
+    with:
+      build_type: Release
+      version: ${{ needs.validate.outputs.version }}
+      retention_days: 30
+
+  release:
+    name: Create draft GitHub release
+    needs:
+      - validate
+      - packages
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: write
+    steps:
+      - name: Download packaged applications
+        uses: actions/download-artifact@v8
+        with:
+          path: release-assets
+          merge-multiple: true
+
+      - name: Validate release assets and write checksums
+        shell: bash
+        run: |
+          mapfile -t packages < <(
+            find release-assets -maxdepth 1 -type f \
+              \( -name '*.zip' -o -name '*.tar.gz' -o -name '*.dmg' \) \
+              -print | sort
+          )
+          if [[ "${#packages[@]}" -ne 4 ]]; then
+            printf 'Expected 4 distribution packages, found %s:\n' "${#packages[@]}" >&2
+            printf '  %s\n' "${packages[@]}" >&2
+            exit 1
+          fi
+          (
+            cd release-assets
+            sha256sum -- *.zip *.tar.gz *.dmg > SHA256SUMS
+          )
+
+      - name: Create tagged draft release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PRERELEASE: ${{ inputs.prerelease }}
+          RELEASE_SHA: ${{ github.sha }}
+          RELEASE_TAG: ${{ needs.validate.outputs.tag }}
+          RELEASE_VERSION: ${{ needs.validate.outputs.version }}
+        run: |
+          cat > release-notes.md <<EOF
+          Automated Rufus++ $RELEASE_VERSION packages built and tested from commit $RELEASE_SHA.
+
+          The macOS DMGs are explicitly unsigned-root development builds for controlled field testing. They run in restricted mode normally and enable physical-device operations only when their bundle executable is launched with sudo. They are not signed or notarized distribution builds.
+          EOF
+
+          release_flags=(--draft)
+          if [[ "$PRERELEASE" == "true" ]]; then
+            release_flags+=(--prerelease)
+          fi
+          gh release create "$RELEASE_TAG" release-assets/* \
+            --target "$RELEASE_SHA" \
+            --title "Rufus++ v$RELEASE_VERSION" \
+            --notes-file release-notes.md \
+            "${release_flags[@]}"
+

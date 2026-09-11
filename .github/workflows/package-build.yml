@@ -1,0 +1,151 @@
+name: Package build
+
+on:
+  workflow_call:
+    inputs:
+      build_type:
+        description: CMake build configuration
+        required: true
+        type: string
+      version:
+        description: Version embedded in the application and package names
+        required: true
+        type: string
+      retention_days:
+        description: Number of days to retain workflow artifacts
+        required: false
+        default: 14
+        type: number
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    name: ${{ matrix.platform }} ${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-22.04
+            platform: linux
+            arch: x86_64
+            variant: portable
+            artifact: rufuspp-linux-x86_64
+          - runner: windows-latest
+            platform: windows
+            arch: x86_64
+            variant: portable
+            artifact: rufuspp-windows-x86_64
+          # Qt 6.8 still references AGL, which Apple removed from macOS 26.
+          - runner: macos-15
+            platform: macos
+            arch: arm64
+            variant: unsigned-root
+            artifact: rufuspp-macos-arm64
+          - runner: macos-15-intel
+            platform: macos
+            arch: x86_64
+            variant: unsigned-root
+            artifact: rufuspp-macos-x86_64
+
+    steps:
+      - name: Validate packaging inputs
+        shell: bash
+        run: |
+          case "${{ inputs.build_type }}" in
+            Debug|Release|RelWithDebInfo) ;;
+            *) echo "Unsupported build type: ${{ inputs.build_type }}" >&2; exit 1 ;;
+          esac
+          if [[ ! "${{ inputs.version }}" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9.-]+)?$ ]]; then
+            echo "Invalid package version: ${{ inputs.version }}" >&2
+            exit 1
+          fi
+
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.3'
+          cache: true
+
+      - name: Install compression libraries (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y zlib1g-dev libbz2-dev liblzma-dev libzstd-dev
+
+      - name: Install compression libraries (macOS)
+        if: runner.os == 'macOS'
+        run: brew install bzip2 xz zstd
+
+      - name: Install compression libraries (Windows)
+        if: runner.os == 'Windows'
+        run: vcpkg install zlib:x64-windows-static-md bzip2:x64-windows-static-md liblzma:x64-windows-static-md zstd:x64-windows-static-md
+
+      - name: Configure package (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          cmake -S . -B build/package \
+            -DCMAKE_BUILD_TYPE="${{ inputs.build_type }}" \
+            -DBUILD_TESTING=ON \
+            -DRUFUSPP_BUILD_QT_APP=ON \
+            -DRUFUSPP_STRICT_WARNINGS=ON \
+            -DRUFUSPP_BUILD_VERSION="${{ inputs.version }}" \
+            -DRUFUSPP_PACKAGE_PLATFORM="${{ matrix.platform }}" \
+            -DRUFUSPP_PACKAGE_ARCH="${{ matrix.arch }}" \
+            -DRUFUSPP_PACKAGE_VARIANT="${{ matrix.variant }}"
+
+      - name: Configure package (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          cmake -S . -B build/package \
+            -DCMAKE_BUILD_TYPE="${{ inputs.build_type }}" \
+            -DBUILD_TESTING=ON \
+            -DRUFUSPP_BUILD_QT_APP=ON \
+            -DRUFUSPP_MACOS_UNSIGNED_ROOT_MODE=ON \
+            -DRUFUSPP_STRICT_WARNINGS=ON \
+            -DRUFUSPP_BUILD_VERSION="${{ inputs.version }}" \
+            -DRUFUSPP_PACKAGE_PLATFORM="${{ matrix.platform }}" \
+            -DRUFUSPP_PACKAGE_ARCH="${{ matrix.arch }}" \
+            -DRUFUSPP_PACKAGE_VARIANT="${{ matrix.variant }}"
+
+      - name: Configure package (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          cmake -S . -B build/package `
+            -A x64 `
+            -DBUILD_TESTING=ON `
+            -DRUFUSPP_BUILD_QT_APP=ON `
+            -DRUFUSPP_STRICT_WARNINGS=ON `
+            -DRUFUSPP_BUILD_VERSION="${{ inputs.version }}" `
+            -DRUFUSPP_PACKAGE_PLATFORM="${{ matrix.platform }}" `
+            -DRUFUSPP_PACKAGE_ARCH="${{ matrix.arch }}" `
+            -DRUFUSPP_PACKAGE_VARIANT="${{ matrix.variant }}" `
+            -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" `
+            -DVCPKG_TARGET_TRIPLET=x64-windows-static-md
+
+      - name: Build
+        run: cmake --build build/package --config "${{ inputs.build_type }}" --parallel
+
+      - name: Test
+        run: ctest --test-dir build/package -C "${{ inputs.build_type }}" --output-on-failure
+
+      - name: Create distribution package
+        run: cpack --config build/package/CPackConfig.cmake -C "${{ inputs.build_type }}"
+
+      - name: Upload distribution package
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.artifact }}
+          path: |
+            build/package/packages/*.zip
+            build/package/packages/*.tar.gz
+            build/package/packages/*.dmg
+            build/package/packages/*.sha256
+          if-no-files-found: error
+          retention-days: ${{ inputs.retention_days }}

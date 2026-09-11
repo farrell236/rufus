@@ -59,7 +59,7 @@ target_include_directories(rufus_plus_plus_portable_core
 
 target_compile_features(rufus_plus_plus_portable_core PUBLIC cxx_std_17)
 target_compile_definitions(rufus_plus_plus_portable_core
-  PUBLIC RUFUSPP_VERSION="${PROJECT_VERSION}"
+  PUBLIC RUFUSPP_VERSION="${RUFUSPP_BUILD_VERSION}"
 )
 if(WIN32)
   target_compile_definitions(rufus_plus_plus_portable_core PRIVATE LZMA_API_STATIC)

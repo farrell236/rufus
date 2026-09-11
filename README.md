@@ -51,6 +51,10 @@ ctest --preset core-only
 The resulting Qt executable is placed under `build/dev/src/qt`. On macOS it is
 the `Rufus++.app` bundle.
 
+Manual development packages and tagged draft releases can be built for Windows
+x86-64, Linux x86-64, macOS ARM64, and macOS x86-64 from the repository's
+**Actions** tab. See [Automated builds and releases](docs/releases.md).
+
 By default, an unsigned macOS development build can inspect media but cannot
 write to a physical disk. Write-enabled release builds require a matching Apple
 Team ID and code-signing identity for the app and privileged helper.
@@ -79,6 +83,7 @@ See the platform documentation below for details.
 
 - [Features and runtime requirements](docs/features.md)
 - [Architecture, safety model, and platform backends](docs/cross-platform.md)
+- [Automated builds and releases](docs/releases.md)
 
 ## License and attribution
 

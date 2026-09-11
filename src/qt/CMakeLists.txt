@@ -20,6 +20,8 @@ set_target_properties(rufus_plus_plus PROPERTIES
   OUTPUT_NAME "Rufus++"
   MACOSX_BUNDLE TRUE
   MACOSX_BUNDLE_BUNDLE_NAME "Rufus++"
+  MACOSX_BUNDLE_BUNDLE_VERSION "${RUFUSPP_NUMERIC_BUILD_VERSION}"
+  MACOSX_BUNDLE_SHORT_VERSION_STRING "${RUFUSPP_NUMERIC_BUILD_VERSION}"
   WIN32_EXECUTABLE TRUE
 )
 
@@ -92,6 +94,15 @@ install(TARGETS rufus_plus_plus
   BUNDLE DESTINATION .
   RUNTIME DESTINATION bin
 )
+install(FILES "${PROJECT_SOURCE_DIR}/LICENSE.txt" DESTINATION .)
+
+qt_generate_deploy_app_script(
+  TARGET rufus_plus_plus
+  OUTPUT_SCRIPT rufus_plus_plus_deploy_script
+  NO_TRANSLATIONS
+  NO_UNSUPPORTED_PLATFORM_ERROR
+)
+install(SCRIPT "${rufus_plus_plus_deploy_script}")
 
 if(BUILD_TESTING)
   add_test(NAME qt-ui-smoke COMMAND rufus_plus_plus --smoke-test)

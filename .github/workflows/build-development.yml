@@ -1,0 +1,25 @@
+name: Build Development
+
+on:
+  workflow_dispatch:
+    inputs:
+      configuration:
+        description: Build configuration
+        required: true
+        default: RelWithDebInfo
+        type: choice
+        options:
+          - RelWithDebInfo
+          - Debug
+
+permissions:
+  contents: read
+
+jobs:
+  packages:
+    uses: ./.github/workflows/package-build.yml
+    with:
+      build_type: ${{ inputs.configuration }}
+      version: 0.1.0-dev.${{ github.run_number }}
+      retention_days: 14
+

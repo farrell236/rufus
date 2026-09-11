@@ -344,7 +344,8 @@ applications.
 
 ## Known release gaps
 
-- Release signing and distribution packaging are incomplete.
+- Automated portable archives and macOS DMGs are available, but production
+  release signing and notarization are not yet configured.
 - Release macOS app/helper builds must be signed with a matching Apple Team ID
   before physical writes are enabled. The opt-in unsigned-root mode is limited
   to local development and hardware testing.
