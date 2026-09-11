@@ -37,6 +37,7 @@
 #endif
 #include <windows.h>
 #include <shellapi.h>
+#include <shlobj.h>
 #include <winioctl.h>
 #include <process.h>
 #else

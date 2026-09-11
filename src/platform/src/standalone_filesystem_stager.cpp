@@ -32,6 +32,7 @@
 #endif
 #include <windows.h>
 #include <shellapi.h>
+#include <shlobj.h>
 #include <process.h>
 #else
 #include <cerrno>

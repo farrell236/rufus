@@ -1887,21 +1887,22 @@ void testImageProfiles() {
          "Windows installers should enable Windows customization metadata");
   expect(windows.capabilities.uefiBootable, "an EFI loader should identify UEFI media");
 
-  rufus::core::ImageInfo linux;
-  linux.format = rufus::core::ImageFormat::Iso;
+  rufus::core::ImageInfo linuxImage;
+  linuxImage.format = rufus::core::ImageFormat::Iso;
   rufus::core::ImageProfileResolver::apply(
       {{"isolinux/isolinux.bin", 1, false},
        {"boot/grub/grub.cfg", 1, false},
        {"efi/boot/bootx64.efi", 1, false},
        {"casper/filesystem.squashfs", 1, false}},
-      linux);
-  expect(linux.family == rufus::core::ImageFamily::LinuxLive,
+      linuxImage);
+  expect(linuxImage.family == rufus::core::ImageFamily::LinuxLive,
          "Syslinux or GRUB live media should identify a Linux image");
-  expect(linux.capabilities.linuxPersistence,
+  expect(linuxImage.capabilities.linuxPersistence,
          "supported Linux live media should offer persistence");
-  expect(linux.capabilities.usesSyslinux && linux.capabilities.usesGrub,
+  expect(linuxImage.capabilities.usesSyslinux &&
+             linuxImage.capabilities.usesGrub,
          "bootloader evidence should be retained in the image profile");
-  expect(linux.capabilities.usesCasper,
+  expect(linuxImage.capabilities.usesCasper,
          "a Casper directory should select Ubuntu-style persistence");
 
   rufus::core::ImageInfo casperGrub4Dos;
