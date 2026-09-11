@@ -597,7 +597,7 @@ void testStandaloneFat32(const TemporaryDirectory& temporary) {
 void writeIsoFixture(const std::filesystem::path& path, const bool corruptBootCatalog = false,
                      const bool corruptWim = false,
                      const bool useInstallEsd = false) {
-  constexpr std::size_t sectorSize = 2048;
+  constexpr std::uint32_t sectorSize = 2048;
   std::vector<unsigned char> bytes(28 * sectorSize, 0);
 
   auto writeBothEndian32 = [&bytes](const std::size_t offset, const std::uint32_t value) {
@@ -765,7 +765,7 @@ enum class GrubFixtureLayout { BootGrub, BootGrub2, RootGrub };
 void writeLinuxPersistenceIsoFixture(
     const std::filesystem::path& path,
     const GrubFixtureLayout grubLayout = GrubFixtureLayout::BootGrub) {
-  constexpr std::size_t sectorSize = 2048;
+  constexpr std::uint32_t sectorSize = 2048;
   std::vector<unsigned char> bytes(30U * sectorSize, 0);
   auto writeBoth32 = [&bytes](const std::size_t offset,
                               const std::uint32_t value) {

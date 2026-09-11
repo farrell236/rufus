@@ -8,6 +8,15 @@
  * (at your option) any later version.
  */
 
+#if defined(_WIN32)
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#endif
+
 #include "main_window.hpp"
 
 #include <QCheckBox>
@@ -84,7 +93,6 @@
 #include "windows_user_experience_dialog.hpp"
 
 #if defined(Q_OS_WIN)
-#define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #endif
 
