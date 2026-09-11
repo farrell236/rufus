@@ -4133,7 +4133,7 @@ void MainWindow::updateDeploymentOptionControls() {
                            !busy);
   verificationProfileBox_->setEnabled(!busy && !macOsInstaller);
   if (macOsInstaller) {
-    const QSignalBlocker blocker(verificationProfileBox_);
+    const QSignalBlocker verificationBlocker(verificationProfileBox_);
     verificationProfileBox_->setCurrentIndex(
         verificationProfileBox_->findData(
             quickFormat_->isChecked() ? "apple-native" : "apple-full"));
@@ -4142,7 +4142,7 @@ void MainWindow::updateDeploymentOptionControls() {
             ? "Apple createinstallmedia owns target erasure, copying, and boot-media finalization."
             : "Rufus++ zero-fills and read-verifies the whole target before Apple createinstallmedia runs.");
     if (badBlocks_->isChecked()) {
-      const QSignalBlocker blocker(badBlocks_);
+      const QSignalBlocker badBlocksBlocker(badBlocks_);
       badBlocks_->setChecked(false);
     }
     badBlocks_->setEnabled(false);
