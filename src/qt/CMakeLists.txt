@@ -110,6 +110,12 @@ if(BUILD_TESTING)
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
     TIMEOUT 15
   )
+  add_test(NAME qt-privilege-indicator
+           COMMAND rufus_plus_plus --verify-privilege-indicator)
+  set_tests_properties(qt-privilege-indicator PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+    TIMEOUT 15
+  )
   add_test(NAME qt-uefi-shell-assets COMMAND rufus_plus_plus --verify-embedded-assets)
   set_tests_properties(qt-uefi-shell-assets PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen"

@@ -270,15 +270,18 @@ Native device transports provide the following safeguards:
   helper over XPC. Ordinary unsigned builds cannot write physical disks. An
   opt-in, visibly labelled unsigned-root development build omits the helper and
   enables the same local operations only when the process has an effective UID
-  of zero. Its runtime indicator distinguishes `RESTRICTED BUILD` and
-  `UNSIGNED ROOT BUILD`; signed-helper builds show no build-state marker.
+  of zero. Its bottom-right runtime indicator distinguishes `UNPRIVILEGED` and
+  `ELEVATED`; a signed-helper build displays `PRIVILEGED HELPER` only when that
+  transport is registered and available. Privilege state is not added to the
+  window title.
 - **Linux:** non-forced unmounts, an exclusive block-device handle, kernel
   geometry revalidation, cache flushing, verification, and partition-table
   rereading. The application currently requires a trusted administrator
   launch.
 - **Windows:** locks and dismounts every target-backed volume, revalidates the
   PhysicalDrive and geometry, uses write-through I/O, and refreshes the disk
-  layout. AUTHORIZE opens a new UAC-elevated application window.
+  layout. AUTHORIZE opens a new UAC-elevated application window; the original
+  window remains `UNPRIVILEGED` and the new process reports `ELEVATED`.
 
 Every backend rejects a source image stored on its target and revalidates target
 identity immediately before destructive access.

@@ -29,10 +29,9 @@ Release, uploads the packages and SHA-256 checksums, and leaves publication as
 a deliberate manual step.
 
 The current macOS packages are clearly named `unsigned-root` and are intended
-only for controlled development and hardware qualification. They run in
-restricted mode when opened normally and enable physical-device operations only
-when the bundle executable is launched directly with `sudo`. They are not
-Developer ID signed or notarized. A public production release still requires
-the signed-helper packaging and Apple notarization workflow described in
-[cross-platform.md](cross-platform.md).
-
+only for controlled development and hardware qualification. Their bottom-right
+indicator displays `UNPRIVILEGED` when opened normally and `ELEVATED` when the
+bundle executable is launched directly with `sudo`; only the latter enables
+physical-device operations. They are not Developer ID signed or notarized. A
+public production release still requires the signed-helper packaging and Apple
+notarization workflow described in [cross-platform.md](cross-platform.md).

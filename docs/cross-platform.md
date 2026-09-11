@@ -72,11 +72,12 @@ effective UID of zero. These operations therefore require launching the bundle
 executable from Terminal with `sudo`. The same local transports retain target
 identity, eligibility, geometry, exclusive-claim, flush, and verification
 checks. Capture output ownership is restored from validated `SUDO_UID` and
-`SUDO_GID` values. The UI labels an ordinary launch `RESTRICTED BUILD` and a
-root launch `UNSIGNED ROOT BUILD` because only the latter makes the complete Qt
-process privileged. Signed-helper builds have no build-state marker. This mode
-is not suitable for distribution. Hardware fault coverage and release signing
-remain outstanding.
+`SUDO_GID` values. The bottom-right UI indicator labels an ordinary launch
+`UNPRIVILEGED` and a root launch `ELEVATED`. A signed-helper build reports
+`PRIVILEGED HELPER` only after its helper is registered and available; otherwise
+it remains `UNPRIVILEGED`. Privilege state is deliberately omitted from the
+window title. Unsigned-root mode is not suitable for distribution. Hardware
+fault coverage and release signing remain outstanding.
 
 Linux and Windows implement the same DD contract as direct elevated transports.
 Linux uses non-forced `umount2` operations followed by an `O_EXCL` whole-block-
@@ -94,6 +95,14 @@ was started through a trusted administrator launcher; it does not attempt to
 smuggle display credentials through `pkexec`. Moving those destructive handles
 into narrowly scoped, authenticated helper processes remains release-hardening
 work; whole-process elevation is not the final privilege boundary.
+
+The runtime indicator uses the same vocabulary on every host:
+`UNPRIVILEGED` means no privileged write transport is active, `ELEVATED` means
+the complete application process has root or Administrator access, and
+`PRIVILEGED HELPER` means the GUI remains unprivileged while an authenticated
+helper performs guarded disk operations. On Windows, AUTHORIZE opens a separate
+UAC-elevated application process; it does not elevate the existing window in
+place.
 
 ## Executable operation matrix
 

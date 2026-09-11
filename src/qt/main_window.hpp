@@ -112,6 +112,7 @@ class MainWindow final : public QMainWindow {
   void handleWriteProgress(const core::RawWriteProgress& progress);
   [[nodiscard]] QString selectedOperation() const;
   void updateRuntimeValidationAvailability();
+  [[nodiscard]] bool updatePrivilegeIndicator();
   void updateDeploymentOptionControls();
   void updatePersistenceRange();
   void updateWriteReadiness();
@@ -156,6 +157,7 @@ class MainWindow final : public QMainWindow {
   QPushButton* closeButton_{};
   QProgressBar* progressBar_{};
   QTextEdit* logView_{};
+  QLabel* privilegeLabel_{};
   std::unique_ptr<backend::BlockDeviceBackend> deviceBackend_;
   std::unique_ptr<backend::NtfsIsoImageStager> ntfsIsoStager_;
   std::unique_ptr<backend::StandaloneFilesystemStager> filesystemStager_;

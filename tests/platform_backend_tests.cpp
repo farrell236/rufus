@@ -34,6 +34,18 @@ int main() {
     return EXIT_FAILURE;
   }
 
+  const auto privilege = backend->privilegeStatus();
+  if (privilege.detail.empty()) {
+    std::cerr << "the platform backend must describe its current privilege route\n";
+    return EXIT_FAILURE;
+  }
+  switch (privilege.route) {
+    case rufus::backend::PrivilegeRoute::Unprivileged:
+    case rufus::backend::PrivilegeRoute::Elevated:
+    case rufus::backend::PrivilegeRoute::PrivilegedHelper:
+      break;
+  }
+
   const auto capabilities = backend->capabilities();
   if (!capabilities.physicalDeviceDiscovery) {
     std::cerr << "platform backend must expose physical-device discovery\n";
@@ -69,6 +81,10 @@ int main() {
   }
   const auto rootAuthorization = backend->requestRawWriteAuthorization();
   if (geteuid() == 0) {
+    if (privilege.route != rufus::backend::PrivilegeRoute::Elevated) {
+      std::cerr << "root mode must report the elevated privilege route\n";
+      return EXIT_FAILURE;
+    }
     if (!rootAuthorization.available ||
         rootAuthorization.authorizationCanBeRequested) {
       std::cerr << "root mode must accept an actual root effective UID without authorization\n";
@@ -78,6 +94,10 @@ int main() {
              rootAuthorization.authorizationCanBeRequested ||
              rootAuthorization.reason.find("sudo") == std::string::npos) {
     std::cerr << "root mode must reject a non-root process with sudo guidance\n";
+    return EXIT_FAILURE;
+  } else if (privilege.route !=
+             rufus::backend::PrivilegeRoute::Unprivileged) {
+    std::cerr << "non-root mode must report the unprivileged route\n";
     return EXIT_FAILURE;
   }
 #endif

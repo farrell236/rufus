@@ -74,6 +74,8 @@ class LinuxBlockDeviceBackend final : public BlockDeviceBackend {
     return result;
   }
 
+  [[nodiscard]] PrivilegeStatus privilegeStatus() const override;
+
   [[nodiscard]] DeviceDiscoveryResult discover() const override;
   [[nodiscard]] RawWriteAvailability rawWriteAvailability(
       const core::BlockDeviceInfo& target) const override;
@@ -735,6 +737,15 @@ DeviceDiscoveryResult LinuxBlockDeviceBackend::discover() const {
               return left.devicePath < right.devicePath;
             });
   return result;
+}
+
+PrivilegeStatus LinuxBlockDeviceBackend::privilegeStatus() const {
+  if (geteuid() == 0) {
+    return {PrivilegeRoute::Elevated,
+            "The complete application is running as root; guarded physical-device operations are enabled"};
+  }
+  return {PrivilegeRoute::Unprivileged,
+          "The application is not running as root; launch it through a trusted administrator mechanism to enable physical-device operations"};
 }
 
 RawWriteAvailability LinuxBlockDeviceBackend::rawWriteAvailability(

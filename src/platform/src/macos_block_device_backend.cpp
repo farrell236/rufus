@@ -82,6 +82,8 @@ class MacOSBlockDeviceBackend final : public BlockDeviceBackend {
     return result;
   }
 
+  [[nodiscard]] PrivilegeStatus privilegeStatus() const override;
+
   [[nodiscard]] DeviceDiscoveryResult discover() const override;
   [[nodiscard]] RawWriteAvailability rawWriteAvailability(
       const core::BlockDeviceInfo& target) const override;
@@ -815,6 +817,24 @@ DeviceDiscoveryResult discoverBlockDevicesInternal() {
               return left.devicePath < right.devicePath;
             });
   return result;
+}
+
+PrivilegeStatus MacOSBlockDeviceBackend::privilegeStatus() const {
+#if RUFUSPP_MACOS_UNSIGNED_ROOT_MODE
+  if (geteuid() == 0) {
+    return {PrivilegeRoute::Elevated,
+            "The complete application is running as root; guarded physical-device operations are enabled"};
+  }
+  return {PrivilegeRoute::Unprivileged,
+          "This development build is not running as root; physical-device operations are disabled"};
+#else
+  const auto helper = macos::privilegedHelperAvailability();
+  if (helper.available) {
+    return {PrivilegeRoute::PrivilegedHelper,
+            "The Qt application remains unprivileged; authenticated physical-device operations are delegated to the signed helper"};
+  }
+  return {PrivilegeRoute::Unprivileged, helper.reason};
+#endif
 }
 
 RawWriteAvailability MacOSBlockDeviceBackend::rawWriteAvailability(

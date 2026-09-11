@@ -70,10 +70,6 @@
 #include <sstream>
 #include <string>
 
-#if defined(Q_OS_MACOS) && RUFUSPP_MACOS_UNSIGNED_ROOT_MODE
-#include <unistd.h>
-#endif
-
 #include "rufus/backend/block_device_backend.hpp"
 #include "rufus/backend/ntfs_iso_image_stager.hpp"
 #include "rufus/backend/standalone_filesystem_stager.hpp"
@@ -338,6 +334,18 @@ QString filesystemSafeComponent(QString value) {
   return value.left(80);
 }
 
+QString privilegeRouteLabel(const backend::PrivilegeRoute route) {
+  switch (route) {
+    case backend::PrivilegeRoute::Unprivileged:
+      return QStringLiteral("UNPRIVILEGED");
+    case backend::PrivilegeRoute::Elevated:
+      return QStringLiteral("ELEVATED");
+    case backend::PrivilegeRoute::PrivilegedHelper:
+      return QStringLiteral("PRIVILEGED HELPER");
+  }
+  return QStringLiteral("UNPRIVILEGED");
+}
+
 }  // namespace
 
 MainWindow::MainWindow(QWidget* parent)
@@ -415,15 +423,8 @@ MainWindow::~MainWindow() {
 
 void MainWindow::buildUi() {
   const auto platform = core::platformName(core::currentPlatform());
-  QString windowTitle = fromView(core::ApplicationInfo::displayName) + " v" +
-                        fromView(core::ApplicationInfo::version);
-#if defined(Q_OS_MACOS) && RUFUSPP_MACOS_UNSIGNED_ROOT_MODE
-  const bool rootPrivilegesActive = geteuid() == 0;
-  windowTitle += rootPrivilegesActive
-                     ? " — UNSIGNED ROOT BUILD"
-                     : " — RESTRICTED BUILD";
-#endif
-  setWindowTitle(windowTitle);
+  setWindowTitle(fromView(core::ApplicationInfo::displayName) + " v" +
+                 fromView(core::ApplicationInfo::version));
   resize(490, 580);
 
   auto* central = new QWidget(this);
@@ -857,25 +858,49 @@ void MainWindow::buildUi() {
   setCentralWidget(central);
   statusBar()->setSizeGripEnabled(false);
   statusBar()->showMessage("Ready — select an image and eligible target");
-#if defined(Q_OS_MACOS) && RUFUSPP_MACOS_UNSIGNED_ROOT_MODE
-  auto* rootModeLabel = new QLabel(
-      rootPrivilegesActive ? "UNSIGNED ROOT BUILD" : "RESTRICTED BUILD",
-      this);
-  rootModeLabel->setToolTip(
-      rootPrivilegesActive
-          ? "Development-only mode: the complete application is currently running as root."
-          : "The root-mode development build is running unprivileged; physical-device operations are disabled.");
-  rootModeLabel->setStyleSheet(
-      rootPrivilegesActive
-          ? "QLabel { background: #9b2c2c; color: white; font-weight: 700; padding: 2px 7px; border-radius: 3px; }"
-          : "QLabel { background: #9a6700; color: white; font-weight: 700; padding: 2px 7px; border-radius: 3px; }");
-  statusBar()->addPermanentWidget(rootModeLabel);
-  appendLog(rootPrivilegesActive
-                ? "WARNING: Unsigned root mode is active. Physical-device operations use whole-process root privileges."
-                : "RESTRICTED: This unsigned root-mode build is running unprivileged. Physical-device operations are disabled; launch from Terminal with sudo to enable them.");
-#endif
+  privilegeLabel_ = new QLabel(this);
+  privilegeLabel_->setObjectName("privilegeIndicator");
+  statusBar()->addPermanentWidget(privilegeLabel_);
+  static_cast<void>(updatePrivilegeIndicator());
   appendLog("Qt user interface initialized on " + fromView(platform) + '.');
   scheduleWindowFitToContents();
+}
+
+bool MainWindow::updatePrivilegeIndicator() {
+  if (privilegeLabel_ == nullptr) {
+    return false;
+  }
+  const backend::PrivilegeStatus status =
+      deviceBackend_ != nullptr
+          ? deviceBackend_->privilegeStatus()
+          : backend::PrivilegeStatus{
+                backend::PrivilegeRoute::Unprivileged,
+                "No platform device backend is available"};
+  const QString label = privilegeRouteLabel(status.route);
+  const bool labelChanged = privilegeLabel_->text() != label;
+  privilegeLabel_->setText(label);
+  privilegeLabel_->setToolTip(QString::fromStdString(status.detail));
+  privilegeLabel_->setAccessibleName("Privilege status: " + label);
+  switch (status.route) {
+    case backend::PrivilegeRoute::Unprivileged:
+      privilegeLabel_->setStyleSheet(
+          "QLabel { background: #9a6700; color: white; font-weight: 700; padding: 2px 7px; border-radius: 3px; }");
+      break;
+    case backend::PrivilegeRoute::Elevated:
+      privilegeLabel_->setStyleSheet(
+          "QLabel { background: #9b2c2c; color: white; font-weight: 700; padding: 2px 7px; border-radius: 3px; }");
+      break;
+    case backend::PrivilegeRoute::PrivilegedHelper:
+      privilegeLabel_->setStyleSheet(
+          "QLabel { background: #1f6feb; color: white; font-weight: 700; padding: 2px 7px; border-radius: 3px; }");
+      break;
+  }
+  if (labelChanged) {
+    appendLog("Privilege route: " + label + ". " +
+              QString::fromStdString(status.detail));
+    scheduleWindowFitToContents();
+  }
+  return labelChanged;
 }
 
 void MainWindow::calculateChecksums() {
@@ -1120,19 +1145,14 @@ void MainWindow::showDiagnostics() {
             "\n";
 
   report += "\nPrivilege boundary\n";
-#if defined(Q_OS_MACOS)
-#if RUFUSPP_MACOS_UNSIGNED_ROOT_MODE
-  report += geteuid() == 0
-                ? "  UNSIGNED ROOT BUILD: development-only whole-process elevation is active. Physical-device operations retain per-operation identity revalidation.\n"
-                : "  RESTRICTED BUILD: the unsigned development process is unprivileged and physical-device operations are disabled. Launch from Terminal with sudo to enable them.\n";
-#else
-  report += "  Authenticated, signed XPC helper; the Qt UI remains unprivileged.\n";
-#endif
-#elif defined(Q_OS_WIN)
-  report += "  Elevated process with per-operation identity revalidation and exclusive handles. A split Windows helper remains a hardening opportunity.\n";
-#else
-  report += "  Elevated process with per-operation identity revalidation and exclusive device claims. A polkit helper remains a hardening opportunity.\n";
-#endif
+  const backend::PrivilegeStatus privilege =
+      deviceBackend_ != nullptr
+          ? deviceBackend_->privilegeStatus()
+          : backend::PrivilegeStatus{
+                backend::PrivilegeRoute::Unprivileged,
+                "No platform device backend is available"};
+  report += "  " + privilegeRouteLabel(privilege.route) + ": " +
+            QString::fromStdString(privilege.detail) + "\n";
   const QString receiptDirectory =
       QDir(QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation))
           .filePath("receipts");
@@ -1485,6 +1505,7 @@ void MainWindow::captureDevice() {
   auto availability = deviceBackend_->captureAvailability(source, format);
   if (!availability.available && availability.authorizationCanBeRequested) {
     const auto authorization = deviceBackend_->requestRawWriteAuthorization();
+    static_cast<void>(updatePrivilegeIndicator());
     appendLog("Administrative disk access: " +
               QString::fromStdString(authorization.reason));
     if (!authorization.available) {
@@ -1647,6 +1668,7 @@ void MainWindow::formatDevice() {
   auto availability = deviceBackend_->rawWriteAvailability(target);
   if (!availability.available && availability.authorizationCanBeRequested) {
     const auto authorization = deviceBackend_->requestRawWriteAuthorization();
+    static_cast<void>(updatePrivilegeIndicator());
     appendLog("Administrative disk access: " +
               QString::fromStdString(authorization.reason));
     if (!authorization.available) {
@@ -2822,6 +2844,9 @@ void MainWindow::refreshVolumes() {
 }
 
 void MainWindow::pollVolumes() {
+  if (updatePrivilegeIndicator()) {
+    updateWriteReadiness();
+  }
   if (writeThread_ != nullptr || captureThread_ != nullptr ||
       imageAnalysisThread_ != nullptr || !deviceBackend_) {
     return;
@@ -2882,6 +2907,7 @@ void MainWindow::startWrite() {
       return;
     }
     const auto authorization = deviceBackend_->requestRawWriteAuthorization();
+    static_cast<void>(updatePrivilegeIndicator());
     appendLog("Administrative disk access: " +
               QString::fromStdString(authorization.reason.empty()
                                          ? "authorized"

@@ -61,6 +61,8 @@ class WindowsBlockDeviceBackend final : public BlockDeviceBackend {
     return result;
   }
 
+  [[nodiscard]] PrivilegeStatus privilegeStatus() const override;
+
   [[nodiscard]] DeviceDiscoveryResult discover() const override;
   [[nodiscard]] RawWriteAvailability rawWriteAvailability(
       const core::BlockDeviceInfo& target) const override;
@@ -1036,6 +1038,15 @@ DeviceDiscoveryResult WindowsBlockDeviceBackend::discover() const {
               return left.devicePath < right.devicePath;
             });
   return result;
+}
+
+PrivilegeStatus WindowsBlockDeviceBackend::privilegeStatus() const {
+  if (processIsElevated()) {
+    return {PrivilegeRoute::Elevated,
+            "This application process has Administrator access; guarded physical-device operations are enabled"};
+  }
+  return {PrivilegeRoute::Unprivileged,
+          "This application process is not elevated; select AUTHORIZE to open an Administrator window when physical-device access is needed"};
 }
 
 RawWriteAvailability WindowsBlockDeviceBackend::rawWriteAvailability(

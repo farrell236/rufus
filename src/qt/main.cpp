@@ -11,6 +11,8 @@
 #include <QApplication>
 #include <QDebug>
 #include <QIcon>
+#include <QLabel>
+#include <QStringList>
 #include <QTimer>
 #include <QToolButton>
 
@@ -205,6 +207,29 @@ int main(int argc, char* argv[]) {
 
   rufus::qt::MainWindow window;
   window.show();
+
+  if (application.arguments().contains("--verify-privilege-indicator")) {
+    const auto* indicator = window.findChild<QLabel*>("privilegeIndicator");
+    const QStringList validLabels{
+        "UNPRIVILEGED", "ELEVATED", "PRIVILEGED HELPER"};
+    if (indicator == nullptr || !validLabels.contains(indicator->text()) ||
+        indicator->toolTip().isEmpty()) {
+      qCritical() << "The bottom-right privilege indicator is missing or invalid";
+      return 1;
+    }
+    for (const QString& marker : validLabels) {
+      if (window.windowTitle().contains(marker)) {
+        qCritical() << "Privilege state must not appear in the window title";
+        return 1;
+      }
+    }
+    if (window.windowTitle().contains("UNSIGNED ROOT BUILD") ||
+        window.windowTitle().contains("RESTRICTED BUILD")) {
+      qCritical() << "A legacy build-state marker remains in the window title";
+      return 1;
+    }
+    QTimer::singleShot(0, &application, &QApplication::quit);
+  }
 
   std::shared_ptr<AdaptiveWindowProbe> sizingProbe;
   if (application.arguments().contains("--verify-window-sizing")) {

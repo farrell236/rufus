@@ -55,12 +55,27 @@ struct RawWriteAvailability final {
   std::string reason;
 };
 
+enum class PrivilegeRoute {
+  Unprivileged,
+  Elevated,
+  PrivilegedHelper,
+};
+
+struct PrivilegeStatus final {
+  PrivilegeRoute route{PrivilegeRoute::Unprivileged};
+  std::string detail;
+};
+
 class BlockDeviceBackend {
  public:
   virtual ~BlockDeviceBackend() = default;
 
   [[nodiscard]] virtual std::string_view name() const noexcept = 0;
   [[nodiscard]] virtual BackendCapabilities capabilities() const noexcept = 0;
+  [[nodiscard]] virtual PrivilegeStatus privilegeStatus() const {
+    return {PrivilegeRoute::Unprivileged,
+            "No privileged device transport is available"};
+  }
   [[nodiscard]] virtual DeviceDiscoveryResult discover() const = 0;
   [[nodiscard]] virtual core::MediaInspectionResult inspectReadOnly(
       const core::BlockDeviceInfo&) const;
