@@ -37,6 +37,7 @@
 #include <QIcon>
 #include <QInputDialog>
 #include <QLabel>
+#include <QLayout>
 #include <QLineEdit>
 #include <QMap>
 #include <QMessageBox>
@@ -2470,6 +2471,12 @@ void MainWindow::handleImageAnalysisFinished(
   appendLog("Analyzed " + QString::fromStdString(image.displayName) + " as " + format + " (" +
             fromView(core::formatByteSize(image.sizeBytes)) + ")");
   appendLog("Image family: " + fromView(core::imageFamilyName(image.family)) + '.');
+  if (image.capabilities.linuxPersistence) {
+    appendLog("Linux persistence: " +
+              QString::fromUtf8(core::linuxPersistenceStyleName(
+                  image.capabilities.linuxPersistenceStyle)) +
+              " boot entries validated.");
+  }
   if (image.architecture != core::ImageArchitecture::Unknown) {
     appendLog("Image architecture: " + fromView(core::imageArchitectureName(image.architecture)) +
               '.');
@@ -2610,10 +2617,13 @@ void MainWindow::applyImageProfile() {
         "Choose UEFI/FAT32 file extraction or an exact sector-for-sector write.");
     persistenceLabel_->show();
     persistencePanel_->show();
+    const QString persistenceStyle = QString::fromUtf8(
+        core::linuxPersistenceStyleName(capabilities.linuxPersistenceStyle));
     persistencePanel_->setToolTip(
-        "This live Linux image contains Syslinux or GRUB boot files. "
-        "A zero size performs UEFI/FAT32 ISO deployment. A nonzero size adds "
-        "an ext2 casper-rw or Debian Live persistence partition.");
+        "Validated " + persistenceStyle +
+        " kernel boot entries were found. A zero size performs ordinary "
+        "ISO deployment; a nonzero size adds the matching ext2 persistence "
+        "partition and patches only those recognized entries.");
     updatePersistenceRange();
   } else if (executableIsoMode && capabilities.rawWrite) {
     imageOptionBox_->addItem("ISO image mode (file copy)", "iso-copy");
@@ -3950,29 +3960,47 @@ void MainWindow::toggleLog() {
   scheduleWindowFitToContents();
 }
 
+void MainWindow::fitWindowToContents() {
+  QWidget* content = centralWidget();
+  if (content == nullptr || content->layout() == nullptr) {
+    return;
+  }
+
+  const int windowChromeWidth = std::max(0, width() - content->width());
+  const int windowChromeHeight = std::max(0, height() - content->height());
+
+  // A previous setFixedSize() can feed the old top-level constraint back into
+  // nested size hints on Windows. Release it before asking the layout for its
+  // new minimum after a panel is shown or hidden.
+  setMinimumSize(0, 0);
+  setMaximumSize(QWIDGETSIZE_MAX, QWIDGETSIZE_MAX);
+  content->updateGeometry();
+  content->layout()->invalidate();
+  content->layout()->activate();
+
+  const QSize minimumContent = content->layout()->totalMinimumSize();
+  constexpr int minimumWindowWidth = 490;
+  const QSize fittedSize{
+      std::max(minimumWindowWidth,
+               minimumContent.width() + windowChromeWidth),
+      minimumContent.height() + windowChromeHeight};
+  setFixedSize(fittedSize);
+}
+
 void MainWindow::scheduleWindowFitToContents() {
   if (windowFitPending_) {
     return;
   }
   windowFitPending_ = true;
   QTimer::singleShot(0, this, [this] {
-    windowFitPending_ = false;
-    QWidget* content = centralWidget();
-    if (content == nullptr || content->layout() == nullptr) {
-      return;
-    }
-    content->layout()->invalidate();
-    content->layout()->activate();
+    fitWindowToContents();
 
-    const QSize minimumContent = content->minimumSizeHint();
-    const int windowChromeWidth = std::max(0, width() - content->width());
-    const int windowChromeHeight = std::max(0, height() - content->height());
-    constexpr int minimumWindowWidth = 490;
-    const QSize fittedSize{
-        std::max(minimumWindowWidth,
-                 minimumContent.width() + windowChromeWidth),
-        minimumContent.height() + windowChromeHeight};
-    setFixedSize(fittedSize);
+    // Some platform styles deliver a nested LayoutRequest only after the
+    // first queued fit. A second coalesced pass observes that settled layout.
+    QTimer::singleShot(0, this, [this] {
+      fitWindowToContents();
+      windowFitPending_ = false;
+    });
   });
 }
 

@@ -761,10 +761,13 @@ void writeIsoFixture(const std::filesystem::path& path, const bool corruptBootCa
 }
 
 enum class GrubFixtureLayout { BootGrub, BootGrub2, RootGrub };
+enum class LinuxFixturePersistence { Casper, DebianLive, Unsupported };
 
 void writeLinuxPersistenceIsoFixture(
     const std::filesystem::path& path,
-    const GrubFixtureLayout grubLayout = GrubFixtureLayout::BootGrub) {
+    const GrubFixtureLayout grubLayout = GrubFixtureLayout::BootGrub,
+    const LinuxFixturePersistence persistence =
+        LinuxFixturePersistence::Casper) {
   constexpr std::uint32_t sectorSize = 2048;
   std::vector<unsigned char> bytes(30U * sectorSize, 0);
   auto writeBoth32 = [&bytes](const std::size_t offset,
@@ -836,8 +839,21 @@ void writeLinuxPersistenceIsoFixture(
   record(primary + 156U, 18, sectorSize, 0x02, {0});
   descriptor(17, 255);
 
-  const std::string config =
-      "menuentry 'Try Linux' {\n  linux /casper/vmlinuz quiet splash\n}\n";
+  std::string config;
+  switch (persistence) {
+    case LinuxFixturePersistence::Casper:
+      config =
+          "menuentry 'Try Linux' {\n  linux /casper/vmlinuz quiet splash\n}\n";
+      break;
+    case LinuxFixturePersistence::DebianLive:
+      config = "menuentry 'Try Linux' {\n  linux /live/vmlinuz boot=live "
+               "components quiet\n}\n";
+      break;
+    case LinuxFixturePersistence::Unsupported:
+      config = "menuentry 'Try Linux' {\n  linux /images/pxeboot/vmlinuz "
+               "rd.live.image quiet\n}\n";
+      break;
+  }
   const bool rootGrub = grubLayout == GrubFixtureLayout::RootGrub;
   const std::string grubDirectory =
       grubLayout == GrubFixtureLayout::BootGrub2 ? "GRUB2" : "GRUB";
@@ -851,7 +867,8 @@ void writeLinuxPersistenceIsoFixture(
   std::vector<std::tuple<std::string, std::uint32_t, std::uint32_t,
                          unsigned char>> rootEntries{
       {"EFI", 19, sectorSize, 0x02},
-      {"CASPER", 25, sectorSize, 0x02},
+      {persistence == LinuxFixturePersistence::Casper ? "CASPER" : "LIVE",
+       25, sectorSize, 0x02},
       {"MD5SUM.TXT;1", 27, static_cast<std::uint32_t>(manifest.size()), 0}};
   rootEntries.emplace_back(rootGrub ? grubDirectory : "BOOT",
                            rootGrub ? 23U : 22U, sectorSize, 0x02);
@@ -1894,7 +1911,7 @@ void testImageProfiles() {
        {"boot/grub/grub.cfg", 1, false},
        {"efi/boot/bootx64.efi", 1, false},
        {"casper/filesystem.squashfs", 1, false}},
-      linuxImage);
+      linuxImage, rufus::core::LinuxPersistenceStyle::Casper);
   expect(linuxImage.family == rufus::core::ImageFamily::LinuxLive,
          "Syslinux or GRUB live media should identify a Linux image");
   expect(linuxImage.capabilities.linuxPersistence,
@@ -1902,15 +1919,30 @@ void testImageProfiles() {
   expect(linuxImage.capabilities.usesSyslinux &&
              linuxImage.capabilities.usesGrub,
          "bootloader evidence should be retained in the image profile");
-  expect(linuxImage.capabilities.usesCasper,
-         "a Casper directory should select Ubuntu-style persistence");
+  expect(linuxImage.capabilities.linuxPersistenceStyle ==
+             rufus::core::LinuxPersistenceStyle::Casper,
+         "validated Casper boot entries should retain their persistence style");
 
   rufus::core::ImageInfo casperGrub4Dos;
   casperGrub4Dos.format = rufus::core::ImageFormat::Iso;
   rufus::core::ImageProfileResolver::apply(
-      {{"GRLDR", 1, false}, {"CASPER", 2048, true}}, casperGrub4Dos);
+      {{"GRLDR", 1, false}, {"CASPER", 2048, true}}, casperGrub4Dos,
+      rufus::core::LinuxPersistenceStyle::Casper);
   expect(!casperGrub4Dos.capabilities.linuxPersistence,
          "BIOS-only GRUB4DOS media must not advertise the UEFI persistence path");
+
+  rufus::core::ImageInfo tailsImage;
+  tailsImage.format = rufus::core::ImageFormat::Iso;
+  tailsImage.capabilities.uefiBootable = true;
+  rufus::core::ImageProfileResolver::apply(
+      {{"boot/grub/grub.cfg", 1, false},
+       {"efi/boot/bootx64.efi", 1, false},
+       {"live/Tails.module", 1, false}},
+      tailsImage, rufus::core::LinuxPersistenceStyle::DebianLive);
+  expect(!tailsImage.capabilities.linuxPersistence &&
+             tailsImage.capabilities.linuxPersistenceStyle ==
+                 rufus::core::LinuxPersistenceStyle::None,
+         "Tails media must retain its native encrypted persistence workflow");
 
   rufus::core::ImageInfo biosGrub;
   biosGrub.format = rufus::core::ImageFormat::Iso;
@@ -1918,7 +1950,7 @@ void testImageProfiles() {
       {{"boot/grub/grub.cfg", 1, false},
        {"boot/grub/i386-pc/normal.mod", 1, false},
        {"live/filesystem.squashfs", 1, false}},
-      biosGrub);
+      biosGrub, rufus::core::LinuxPersistenceStyle::DebianLive);
   expect(biosGrub.capabilities.linuxPersistence &&
              biosGrub.capabilities.biosBootable &&
              !biosGrub.capabilities.uefiBootable,
@@ -1932,7 +1964,7 @@ void testImageProfiles() {
         {{grubPrefix + "/grub.cfg", 1, false},
          {grubPrefix + "/i386-pc/normal.mod", 1, false},
          {"live/filesystem.squashfs", 1, false}},
-        alternateGrub);
+        alternateGrub, rufus::core::LinuxPersistenceStyle::DebianLive);
     expect(alternateGrub.capabilities.linuxPersistence &&
                alternateGrub.capabilities.biosBootable,
            "common alternate GRUB2 directory layouts should enable extracted persistence mode");
@@ -2788,6 +2820,10 @@ void testLinuxPersistence(const TemporaryDirectory& temporary) {
   const auto ubuntuPatch = rufus::core::patchLinuxPersistenceBootConfiguration(
       "boot/grub/grub.cfg", ubuntuConfig,
       rufus::core::LinuxPersistenceStyle::Casper);
+  expect(rufus::core::detectLinuxPersistenceStyle(
+             "boot/grub/grub.cfg", ubuntuConfig) ==
+             rufus::core::LinuxPersistenceStyle::Casper,
+         "Casper persistence should be detected from a matching kernel entry");
   expect(ubuntuPatch.recognizedConfiguration && ubuntuPatch.modified &&
              ubuntuPatch.contents.find("/casper/vmlinuz persistent") !=
                  std::string::npos,
@@ -2823,6 +2859,10 @@ void testLinuxPersistence(const TemporaryDirectory& temporary) {
   const auto debianPatch = rufus::core::patchLinuxPersistenceBootConfiguration(
       "isolinux/menu.cfg", "append boot=live components quiet\n",
       rufus::core::LinuxPersistenceStyle::DebianLive);
+  expect(rufus::core::detectLinuxPersistenceStyle(
+             "isolinux/menu.cfg", "append boot=live components quiet\n") ==
+             rufus::core::LinuxPersistenceStyle::DebianLive,
+         "Debian persistence should be detected from a boot=live kernel entry");
   expect(debianPatch.modified &&
              debianPatch.contents.find("boot=live persistence") !=
                  std::string::npos,
@@ -2832,6 +2872,11 @@ void testLinuxPersistence(const TemporaryDirectory& temporary) {
       rufus::core::LinuxPersistenceStyle::DebianLive);
   expect(!unrelatedPatch.recognizedConfiguration && !unrelatedPatch.modified,
          "unrelated ISO files must never be changed by persistence patching");
+  expect(rufus::core::detectLinuxPersistenceStyle(
+             "boot/grub/grub.cfg",
+             "linux /images/pxeboot/vmlinuz rd.live.image quiet\n") ==
+             rufus::core::LinuxPersistenceStyle::None,
+         "generic live-media kernel entries must not be mistaken for Debian persistence");
 
   const auto udfPath = temporary.path() / "persistence-source.udf";
   writeUdfFixture(udfPath);
@@ -2842,7 +2887,8 @@ void testLinuxPersistence(const TemporaryDirectory& temporary) {
   linuxImage.family = rufus::core::ImageFamily::LinuxLive;
   linuxImage.capabilities.linuxPersistence = true;
   linuxImage.capabilities.usesGrub = true;
-  linuxImage.capabilities.usesCasper = false;
+  linuxImage.capabilities.linuxPersistenceStyle =
+      rufus::core::LinuxPersistenceStyle::DebianLive;
   linuxImage.capabilities.uefiBootable = true;
 
   rufus::core::BlockDeviceInfo device;
@@ -2906,7 +2952,8 @@ void testLinuxPersistence(const TemporaryDirectory& temporary) {
          "the second partition should contain a labeled ext2 filesystem");
 
   auto casperImage = linuxImage;
-  casperImage.capabilities.usesCasper = true;
+  casperImage.capabilities.linuxPersistenceStyle =
+      rufus::core::LinuxPersistenceStyle::Casper;
   const auto casperPlan = planner.build(
       casperImage, device, "LIVE_TEST",
       rufus::core::LinuxPersistenceOptions{256ULL * 1024ULL * 1024ULL});
@@ -2920,8 +2967,40 @@ void testLinuxPersistence(const TemporaryDirectory& temporary) {
   const auto casperAnalysis = analyzer.analyze(casperIsoPath);
   expect(casperAnalysis.succeeded() &&
              casperAnalysis.image->capabilities.linuxPersistence &&
-             casperAnalysis.image->capabilities.usesCasper,
-         "a real Casper ISO tree should enable persistence planning");
+             casperAnalysis.image->capabilities.linuxPersistenceStyle ==
+                 rufus::core::LinuxPersistenceStyle::Casper,
+         "a real Casper boot entry should enable Casper persistence planning");
+
+  const auto debianIsoPath = temporary.path() / "debian-persistence.iso";
+  writeLinuxPersistenceIsoFixture(
+      debianIsoPath, GrubFixtureLayout::BootGrub,
+      LinuxFixturePersistence::DebianLive);
+  const auto debianAnalysis = analyzer.analyze(debianIsoPath);
+  expect(debianAnalysis.succeeded() &&
+             debianAnalysis.image->capabilities.linuxPersistence &&
+             debianAnalysis.image->capabilities.linuxPersistenceStyle ==
+                 rufus::core::LinuxPersistenceStyle::DebianLive,
+         "a real boot=live entry should enable Debian Live persistence planning");
+
+  const auto unsupportedIsoPath =
+      temporary.path() / "unsupported-persistence.iso";
+  writeLinuxPersistenceIsoFixture(
+      unsupportedIsoPath, GrubFixtureLayout::BootGrub,
+      LinuxFixturePersistence::Unsupported);
+  const auto unsupportedAnalysis = analyzer.analyze(unsupportedIsoPath);
+  expect(unsupportedAnalysis.succeeded() &&
+             unsupportedAnalysis.image->capabilities.usesGrub &&
+             !unsupportedAnalysis.image->capabilities.linuxPersistence &&
+             unsupportedAnalysis.image->capabilities.linuxPersistenceStyle ==
+                 rufus::core::LinuxPersistenceStyle::None,
+         "GRUB media without Casper or Debian Live entries must not advertise persistence");
+  expect(!planner
+              .build(*unsupportedAnalysis.image, device, "UNSUPPORTED",
+                     rufus::core::LinuxPersistenceOptions{
+                         256ULL * 1024ULL * 1024ULL})
+              .succeeded(),
+         "persistence planning must reject an image without a validated style");
+
   const auto integratedCasperPlan = planner.build(
       *casperAnalysis.image, device, "CASPER_TEST",
       rufus::core::LinuxPersistenceOptions{256ULL * 1024ULL * 1024ULL});

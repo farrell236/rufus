@@ -101,7 +101,9 @@ ImageArchitecture architectureFromBootLoaders(const std::vector<std::string>& pa
 
 }  // namespace
 
-void ImageProfileResolver::apply(const std::vector<ImageContentEntry>& contents, ImageInfo& image) {
+void ImageProfileResolver::apply(
+    const std::vector<ImageContentEntry>& contents, ImageInfo& image,
+    const LinuxPersistenceStyle detectedPersistenceStyle) {
   const ImageCapabilities inspected = image.capabilities;
   image.capabilities = {};
   image.capabilities.iso9660 = inspected.iso9660;
@@ -138,12 +140,7 @@ void ImageProfileResolver::apply(const std::vector<ImageContentEntry>& contents,
                           hasPathOrSuffix(paths, "freeldr.sys");
   const bool hasKolibriOs = hasExactPath(paths, "kolibri.img") ||
                             hasPathPrefix(paths, "kolibrios/");
-  const bool usesCasper = hasExactPath(paths, "casper") ||
-                          hasPathPrefix(paths, "casper/") ||
-                          std::any_of(paths.begin(), paths.end(), [](const std::string& path) {
-                            return path.rfind("casper", 0) == 0 &&
-                                   path.find("pop-os") == std::string::npos;
-                          });
+  const bool hasTails = hasExactPath(paths, "live/tails.module");
   const bool popOsCasper = std::any_of(
       paths.begin(), paths.end(), [](const std::string& path) {
         return path.rfind("casper", 0) == 0 && path.find("pop-os") != std::string::npos;
@@ -168,13 +165,13 @@ void ImageProfileResolver::apply(const std::vector<ImageContentEntry>& contents,
                                hasPathSuffix(paths, "/grub.cfg") ||
                                hasExactPath(paths, "grub.cfg") ||
                                hasExactPath(paths, "grldr");
-  image.capabilities.usesCasper = usesCasper;
   image.capabilities.uefiBootable = inspected.uefiBootable || hasEfiLoader ||
                                     hasPathPrefix(paths, "efi/microsoft/boot/");
   image.capabilities.biosBootable = inspected.biosBootable || image.bootable || hasBootManager ||
                                     image.capabilities.usesSyslinux ||
                                     image.capabilities.usesGrub;
-  image.capabilities.isoExtraction = image.format == ImageFormat::Iso && !contents.empty();
+  image.capabilities.isoExtraction =
+      image.format == ImageFormat::Iso && !contents.empty();
   image.capabilities.rawWrite = image.format == ImageFormat::Raw ||
                                 ((image.format == ImageFormat::Vhd ||
                                   image.format == ImageFormat::Vhdx) &&
@@ -194,11 +191,17 @@ void ImageProfileResolver::apply(const std::vector<ImageContentEntry>& contents,
   image.capabilities.windowsToGo = hasWindows && inspected.windowsImageMetadata &&
                                    supportsWindowsToGoVersion &&
                                    image.capabilities.uefiBootable;
-  image.capabilities.linuxPersistence =
+  const bool linuxPersistenceCompatible =
       image.format == ImageFormat::Iso &&
+      detectedPersistenceStyle != LinuxPersistenceStyle::None &&
       (image.capabilities.usesSyslinux || image.capabilities.usesGrub) &&
       (image.capabilities.uefiBootable || hasStandardGrubBiosTree) &&
-      !hasWindows && !hasReactOs && !hasKolibriOs && !popOsCasper;
+      !hasWindows && !hasReactOs && !hasKolibriOs && !hasTails &&
+      !popOsCasper;
+  image.capabilities.linuxPersistence = linuxPersistenceCompatible;
+  image.capabilities.linuxPersistenceStyle =
+      linuxPersistenceCompatible ? detectedPersistenceStyle
+                                 : LinuxPersistenceStyle::None;
   image.capabilities.requiresNtfs = image.capabilities.containsLargeFile;
   image.architecture = mergeArchitecture(image.architecture,
                                           architectureFromBootLoaders(paths));

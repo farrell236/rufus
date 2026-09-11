@@ -120,6 +120,7 @@ class MainWindow final : public QMainWindow {
   void beginOperationGuard();
   void endOperationGuard();
   void noteOperationProgress();
+  void fitWindowToContents();
   void scheduleWindowFitToContents();
   void saveDeploymentReceipt(const core::RawWriteResult& result);
 

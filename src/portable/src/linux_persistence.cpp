@@ -268,6 +268,48 @@ LinuxPersistencePatchResult patchLinuxPersistenceBootConfiguration(
   return result;
 }
 
+LinuxPersistenceStyle detectLinuxPersistenceStyle(
+    const std::string_view path, const std::string_view contents) {
+  if (!detail::isLinuxBootConfigurationPath(path)) {
+    return LinuxPersistenceStyle::None;
+  }
+  const std::string foldedPath =
+      detail::normalizedPersistencePath(std::string(path));
+  const std::size_t slash = foldedPath.find_last_of('/');
+  const std::string basename =
+      foldedPath.substr(slash == std::string::npos ? 0U : slash + 1U);
+  const bool grub = basename == "grub.cfg" || basename == "loopback.cfg";
+  bool casper = false;
+  bool debianLive = false;
+  for (std::size_t begin = 0; begin < contents.size();) {
+    const std::size_t newline = contents.find('\n', begin);
+    const std::size_t end =
+        newline == std::string_view::npos ? contents.size() : newline;
+    std::string line(contents.substr(begin, end - begin));
+    if (!line.empty() && line.back() == '\r') {
+      line.pop_back();
+    }
+    casper = casper ||
+             lineMatchesPattern(line, grub, PatchPattern::Preseed) ||
+             lineMatchesPattern(line, grub, PatchPattern::CasperBoot) ||
+             lineMatchesPattern(line, grub, PatchPattern::CasperLinux) ||
+             lineMatchesPattern(line, grub, PatchPattern::CasperKernel);
+    debianLive = debianLive ||
+                 lineMatchesPattern(line, grub, PatchPattern::DebianBoot);
+    if (casper && debianLive) {
+      return LinuxPersistenceStyle::None;
+    }
+    begin = newline == std::string_view::npos ? contents.size() : newline + 1U;
+  }
+  if (casper) {
+    return LinuxPersistenceStyle::Casper;
+  }
+  if (debianLive) {
+    return LinuxPersistenceStyle::DebianLive;
+  }
+  return LinuxPersistenceStyle::None;
+}
+
 const char* linuxPersistenceStyleName(const LinuxPersistenceStyle style) noexcept {
   switch (style) {
     case LinuxPersistenceStyle::None:

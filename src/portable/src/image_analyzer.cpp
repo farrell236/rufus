@@ -13,6 +13,7 @@
 #include "compressed_image_inspector.hpp"
 #include "compressed_image_source.hpp"
 #include "iso9660_reader.hpp"
+#include "linux_persistence_support.hpp"
 #include "udf_reader.hpp"
 #include "wim_inspector.hpp"
 
@@ -28,6 +29,7 @@
 #include <vector>
 
 #include "rufus/core/image_profile.hpp"
+#include "rufus/core/linux_persistence.hpp"
 
 namespace rufus::core {
 
@@ -36,6 +38,67 @@ namespace {
 constexpr std::uint64_t kIsoSectorSize = 2048;
 constexpr std::uint64_t kIsoDescriptorStart = 16;
 constexpr std::uint64_t kIsoDescriptorLimit = 64;
+constexpr std::uint64_t kMaximumLinuxBootConfigurationBytes = 4ULL * 1024ULL * 1024ULL;
+constexpr std::uint64_t kMaximumLinuxBootConfigurationsTotalBytes =
+    8ULL * 1024ULL * 1024ULL;
+
+struct LinuxPersistenceInspection final {
+  LinuxPersistenceStyle style{LinuxPersistenceStyle::None};
+  std::vector<std::string> warnings;
+  bool cancelled{};
+};
+
+LinuxPersistenceInspection inspectLinuxPersistence(
+    const std::filesystem::path& imagePath,
+    const std::vector<detail::ImageFileRecord>& files,
+    const ImageAnalysisCancelCallback& isCancelled) {
+  LinuxPersistenceInspection result;
+  std::uint64_t inspectedBytes = 0;
+  for (const auto& file : files) {
+    if (!detail::isLinuxBootConfigurationPath(file.path)) {
+      continue;
+    }
+    if (isCancelled && isCancelled()) {
+      result.cancelled = true;
+      return result;
+    }
+    if (file.sizeBytes == 0U ||
+        file.sizeBytes > kMaximumLinuxBootConfigurationBytes ||
+        inspectedBytes > kMaximumLinuxBootConfigurationsTotalBytes -
+                             file.sizeBytes) {
+      result.warnings.emplace_back(
+          "A Linux boot configuration was too large to inspect safely for persistence: " +
+          file.path);
+      continue;
+    }
+    std::vector<unsigned char> bytes(static_cast<std::size_t>(file.sizeBytes));
+    std::string error;
+    if (!detail::readImageFile(imagePath, file, 0U, bytes.data(), bytes.size(),
+                               error)) {
+      result.warnings.emplace_back(
+          "Unable to inspect a Linux boot configuration for persistence: " +
+          file.path + " (" + error + ")");
+      continue;
+    }
+    inspectedBytes += file.sizeBytes;
+    const LinuxPersistenceStyle detected = detectLinuxPersistenceStyle(
+        file.path, std::string_view(
+                       reinterpret_cast<const char*>(bytes.data()), bytes.size()));
+    if (detected == LinuxPersistenceStyle::None) {
+      continue;
+    }
+    if (result.style != LinuxPersistenceStyle::None &&
+        result.style != detected) {
+      result.style = LinuxPersistenceStyle::None;
+      result.warnings.emplace_back(
+          "Conflicting Casper and Debian Live persistence entries were detected; "
+          "automatic persistence is disabled");
+      return result;
+    }
+    result.style = detected;
+  }
+  return result;
+}
 
 template <std::size_t Size>
 bool readAt(std::ifstream& stream, const std::uint64_t offset, std::array<unsigned char, Size>& data) {
@@ -902,6 +965,7 @@ ImageAnalysisResult ImageAnalyzer::analyze(
   }
 
   std::vector<ImageContentEntry> imageContents;
+  LinuxPersistenceInspection persistenceInspection;
   if (image.format == ImageFormat::Iso) {
     if (cancelled()) {
       return result;
@@ -923,6 +987,17 @@ ImageAnalysisResult ImageAnalyzer::analyze(
     const bool preferUdf = udfContents.valid &&
                            (!isoContents.valid || udfContents.entries.size() > isoContents.entries.size());
     const auto& selectedFiles = preferUdf ? udfContents.files : isoContents.files;
+    persistenceInspection =
+        inspectLinuxPersistence(path, selectedFiles, isCancelled);
+    if (persistenceInspection.cancelled) {
+      result.cancelled = true;
+      result.error = "Image analysis was cancelled";
+      return result;
+    }
+    result.warnings.insert(
+        result.warnings.end(),
+        std::make_move_iterator(persistenceInspection.warnings.begin()),
+        std::make_move_iterator(persistenceInspection.warnings.end()));
     const auto wim = detail::inspectWindowsImage(path, selectedFiles);
     image.capabilities.windowsImageMetadata = wim.valid;
     image.windowsImageCount = wim.imageCount;
@@ -951,7 +1026,8 @@ ImageAnalysisResult ImageAnalyzer::analyze(
                            std::make_move_iterator(udfContents.warnings.begin()),
                            std::make_move_iterator(udfContents.warnings.end()));
   }
-  ImageProfileResolver::apply(imageContents, image);
+  ImageProfileResolver::apply(imageContents, image,
+                              persistenceInspection.style);
   if (image.format == ImageFormat::Iso && image.capabilities.isoExtraction &&
       !image.capabilities.standardWindowsInstallation &&
       image.capabilities.biosBootable && !image.capabilities.uefiBootable) {

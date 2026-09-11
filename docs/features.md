@@ -113,9 +113,13 @@ Manager/BCD data, and commits the result through the native raw writer.
 
 ### Linux persistence
 
-Supported live Linux images expose a persistence-size control after an eligible
-target is selected. The available size is calculated from target capacity after
-reserving 110% of the extracted ISO payload.
+Rufus++ does not infer persistence support from a distribution name or from the
+mere presence of GRUB or Syslinux. It inspects bounded, recognized boot
+configuration files and exposes the persistence-size control only when an
+actual Casper or Debian Live kernel entry can be patched safely. Unknown live
+layouts remain available for ordinary ISO or exact DD deployment without a
+persistence control. The available persistence size is calculated from target
+capacity after reserving 110% of the extracted ISO payload.
 
 The portable stager creates a second MBR partition containing a verified ext2
 filesystem:
@@ -124,6 +128,11 @@ filesystem:
 - Debian-style media uses the `persistence` label and `/persistence.conf`.
 - Recognized GRUB and Syslinux entries are patched idempotently.
 - Affected MD5 manifests are updated before the complete image is written.
+
+Custom persistence implementations are not treated as generic Debian Live
+media. In particular, Tails retains its native encrypted `TailsData` workflow,
+and Pop!_OS media carrying its custom Casper layout does not expose this
+control.
 
 Legacy-BIOS installation for Syslinux-only media remains capability-gated.
 Hybrid images can still use exact DD mode.

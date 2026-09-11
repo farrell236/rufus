@@ -26,7 +26,10 @@ struct ImageContentEntry final {
 
 class ImageProfileResolver final {
  public:
-  static void apply(const std::vector<ImageContentEntry>& contents, ImageInfo& image);
+  static void apply(
+      const std::vector<ImageContentEntry>& contents, ImageInfo& image,
+      LinuxPersistenceStyle detectedPersistenceStyle =
+          LinuxPersistenceStyle::None);
 };
 
 }  // namespace rufus::core

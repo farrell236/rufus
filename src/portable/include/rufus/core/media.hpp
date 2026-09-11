@@ -103,6 +103,12 @@ enum class ContainerPayloadLayout {
   DynamicVhdx,
 };
 
+enum class LinuxPersistenceStyle {
+  None,
+  Casper,
+  DebianLive,
+};
+
 struct ImageCapabilities final {
   bool isoExtraction{};
   bool rawWrite{};
@@ -116,7 +122,7 @@ struct ImageCapabilities final {
   bool containsLargeFile{};
   bool usesSyslinux{};
   bool usesGrub{};
-  bool usesCasper{};
+  LinuxPersistenceStyle linuxPersistenceStyle{LinuxPersistenceStyle::None};
   bool iso9660{};
   bool joliet{};
   bool udf{};

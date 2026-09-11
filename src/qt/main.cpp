@@ -146,8 +146,18 @@ class AdaptiveWindowProbe final
   }
 
   void fail(const char* message) {
-    std::fputs(message, stderr);
-    std::fputc('\n', stderr);
+    std::fprintf(
+        stderr,
+        "%s [stage=%d, current=%dx%d, minimum=%dx%d, maximum=%dx%d, "
+        "baseline=%dx%d, drive-panel=%s, format-panel=%s]\n",
+        message, stage_, window_.width(), window_.height(),
+        window_.minimumWidth(), window_.minimumHeight(),
+        window_.maximumWidth(), window_.maximumHeight(), baselineSize_.width(),
+        baselineSize_.height(),
+        driveAdvanced_ != nullptr && driveAdvanced_->isChecked() ? "open"
+                                                                 : "closed",
+        formatAdvanced_ != nullptr && formatAdvanced_->isChecked() ? "open"
+                                                                   : "closed");
     std::fflush(stderr);
     qCritical().noquote() << message;
     application_.exit(1);

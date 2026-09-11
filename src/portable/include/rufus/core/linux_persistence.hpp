@@ -14,13 +14,9 @@
 #include <string>
 #include <string_view>
 
-namespace rufus::core {
+#include "rufus/core/media.hpp"
 
-enum class LinuxPersistenceStyle {
-  None,
-  Casper,
-  DebianLive,
-};
+namespace rufus::core {
 
 struct LinuxPersistenceOptions final {
   // A zero-sized request disables persistence. Non-zero requests are aligned
@@ -39,6 +35,11 @@ struct LinuxPersistencePatchResult final {
 [[nodiscard]] LinuxPersistencePatchResult patchLinuxPersistenceBootConfiguration(
     std::string_view path, std::string_view contents,
     LinuxPersistenceStyle style);
+
+// Returns a supported persistence convention only when a recognized GRUB or
+// Syslinux configuration contains a matching live-kernel entry.
+[[nodiscard]] LinuxPersistenceStyle detectLinuxPersistenceStyle(
+    std::string_view path, std::string_view contents);
 
 [[nodiscard]] const char* linuxPersistenceStyleName(
     LinuxPersistenceStyle style) noexcept;

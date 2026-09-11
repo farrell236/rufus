@@ -2206,10 +2206,13 @@ IsoDeploymentPlanResult IsoDeploymentPlanner::build(const ImageInfo& image,
          "ISO mode requires a readable ISO-9660, Joliet, or UDF file tree"});
   }
   const bool linuxPersistence = persistence.sizeBytes != 0U;
-  if (linuxPersistence && !image.capabilities.linuxPersistence) {
+  if (linuxPersistence &&
+      (!image.capabilities.linuxPersistence ||
+       image.capabilities.linuxPersistenceStyle ==
+           LinuxPersistenceStyle::None)) {
     result.issues.push_back(
         {SafetyIssueCode::ModeUnsupported,
-         "Linux persistence requires compatible Syslinux or GRUB live media"});
+         "Linux persistence requires a validated Casper or Debian Live boot entry"});
   }
   if (linuxPersistence && persistence.sizeBytes < 256ULL * kMebibyte) {
     result.issues.push_back(
@@ -2506,8 +2509,7 @@ IsoDeploymentPlanResult IsoDeploymentPlanner::build(const ImageInfo& image,
   const LinuxPersistenceStyle persistenceStyle =
       !linuxPersistence
           ? LinuxPersistenceStyle::None
-          : image.capabilities.usesCasper ? LinuxPersistenceStyle::Casper
-                                          : LinuxPersistenceStyle::DebianLive;
+          : image.capabilities.linuxPersistenceStyle;
   const std::uint64_t alignedPersistenceBytes =
       linuxPersistence
           ? static_cast<std::uint64_t>(ignoredLayout.persistenceSectors) *
