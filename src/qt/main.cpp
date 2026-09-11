@@ -14,6 +14,7 @@
 #include <QTimer>
 #include <QToolButton>
 
+#include <cstdio>
 #include <memory>
 
 #include "main_window.hpp"
@@ -22,6 +23,8 @@
 #include "uefi_shell_assets.hpp"
 
 namespace {
+
+constexpr int kAdaptiveWindowProbeDelayMilliseconds = 50;
 
 class AdaptiveWindowProbe final
     : public std::enable_shared_from_this<AdaptiveWindowProbe> {
@@ -116,10 +119,14 @@ class AdaptiveWindowProbe final
 
   void queueNext() {
     const auto self = shared_from_this();
-    QTimer::singleShot(0, &application_, [self] { self->advance(); });
+    QTimer::singleShot(kAdaptiveWindowProbeDelayMilliseconds, &application_,
+                       [self] { self->advance(); });
   }
 
   void fail(const char* message) {
+    std::fputs(message, stderr);
+    std::fputc('\n', stderr);
+    std::fflush(stderr);
     qCritical().noquote() << message;
     application_.exit(1);
   }
@@ -169,7 +176,7 @@ int main(int argc, char* argv[]) {
   std::shared_ptr<AdaptiveWindowProbe> sizingProbe;
   if (application.arguments().contains("--verify-window-sizing")) {
     sizingProbe = std::make_shared<AdaptiveWindowProbe>(application, window);
-    QTimer::singleShot(0, &application,
+    QTimer::singleShot(kAdaptiveWindowProbeDelayMilliseconds, &application,
                        [sizingProbe] { sizingProbe->advance(); });
   }
 
