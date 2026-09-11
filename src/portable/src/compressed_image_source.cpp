@@ -97,7 +97,7 @@ class GzipDecoder final : public Decoder {
   bool reset(std::string& error) override {
     close();
 #ifdef _WIN32
-    file_ = gzopen_w(path_.c_str(), L"rb");
+    file_ = gzopen_w(path_.c_str(), "rb");
 #else
     file_ = gzopen(path_.c_str(), "rb");
 #endif
@@ -174,7 +174,11 @@ class Bzip2Decoder final : public Decoder {
   bool reset(std::string& error) override {
     close();
 #if defined(_WIN32)
-    file_ = _wfopen(path_.c_str(), L"rb");
+    std::FILE* opened = nullptr;
+    if (_wfopen_s(&opened, path_.c_str(), L"rb") != 0) {
+      opened = nullptr;
+    }
+    file_ = opened;
 #else
     file_ = std::fopen(path_.c_str(), "rb");
 #endif

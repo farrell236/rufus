@@ -9,6 +9,7 @@ on:
       - 'src/portable/**'
       - 'src/platform/**'
       - 'src/qt/**'
+      - 'res/**'
       - 'tests/**'
   pull_request:
     branches: [master]
@@ -19,6 +20,7 @@ on:
       - 'src/portable/**'
       - 'src/platform/**'
       - 'src/qt/**'
+      - 'res/**'
       - 'tests/**'
 
 permissions:
@@ -31,7 +33,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        # Qt 6.8 still references AGL, which Apple removed from macOS 26.
+        # Keep the LTS toolchain on macOS 15 until the project raises its
+        # minimum Qt version to a release that no longer links AGL.
+        os: [ubuntu-latest, windows-latest, macos-15]
 
     steps:
       - name: Checkout repository
