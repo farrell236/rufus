@@ -77,3 +77,21 @@ jobs:
 
       - name: Test
         run: ctest --preset dev -C Debug
+
+      - name: Configure unsigned-root development mode (macOS)
+        if: runner.os == 'macOS'
+        run: >-
+          cmake -S . -B build/macos-unsigned-root
+          -DCMAKE_BUILD_TYPE=Debug
+          -DBUILD_TESTING=ON
+          -DRUFUSPP_BUILD_QT_APP=ON
+          -DRUFUSPP_MACOS_UNSIGNED_ROOT_MODE=ON
+          -DRUFUSPP_STRICT_WARNINGS=ON
+
+      - name: Build unsigned-root development mode (macOS)
+        if: runner.os == 'macOS'
+        run: cmake --build build/macos-unsigned-root --config Debug
+
+      - name: Test unsigned-root development mode (macOS)
+        if: runner.os == 'macOS'
+        run: ctest --test-dir build/macos-unsigned-root -C Debug --output-on-failure

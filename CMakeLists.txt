@@ -9,6 +9,8 @@ project(
 
 if(APPLE)
   enable_language(OBJCXX)
+  option(RUFUSPP_MACOS_UNSIGNED_ROOT_MODE
+      "Build an unsigned macOS development app that requires whole-process root execution" OFF)
   set(RUFUSPP_MACOS_APP_IDENTIFIER "org.rufusplusplus.app" CACHE STRING
       "Bundle identifier for the signed macOS application")
   set(RUFUSPP_MACOS_HELPER_IDENTIFIER "org.rufusplusplus.app.privileged-helper" CACHE STRING
@@ -25,6 +27,11 @@ if(APPLE)
   if(RUFUSPP_MACOS_TEAM_IDENTIFIER AND
      NOT RUFUSPP_MACOS_TEAM_IDENTIFIER MATCHES "^[A-Z0-9]+$")
     message(FATAL_ERROR "RUFUSPP_MACOS_TEAM_IDENTIFIER must be an Apple Team ID")
+  endif()
+  if(RUFUSPP_MACOS_UNSIGNED_ROOT_MODE AND
+     (RUFUSPP_MACOS_TEAM_IDENTIFIER OR RUFUSPP_MACOS_CODE_SIGN_IDENTITY))
+    message(FATAL_ERROR
+        "RUFUSPP_MACOS_UNSIGNED_ROOT_MODE cannot be combined with macOS signing settings")
   endif()
 endif()
 

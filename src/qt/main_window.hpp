@@ -120,6 +120,7 @@ class MainWindow final : public QMainWindow {
   void beginOperationGuard();
   void endOperationGuard();
   void noteOperationProgress();
+  void scheduleWindowFitToContents();
   void saveDeploymentReceipt(const core::RawWriteResult& result);
 
   QComboBox* volumeBox_{};
@@ -181,6 +182,7 @@ class MainWindow final : public QMainWindow {
   std::int64_t lastOperationProgressMs_{};
   bool stallWarningIssued_{};
   bool closeWhenFinished_{};
+  bool windowFitPending_{};
   bool isoDeploymentRunning_{};
   bool ntfsIsoDeploymentRunning_{};
   bool windowsToGoDeploymentRunning_{};

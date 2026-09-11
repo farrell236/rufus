@@ -69,6 +69,10 @@
 #include <sstream>
 #include <string>
 
+#if defined(Q_OS_MACOS) && RUFUSPP_MACOS_UNSIGNED_ROOT_MODE
+#include <unistd.h>
+#endif
+
 #include "rufus/backend/block_device_backend.hpp"
 #include "rufus/backend/ntfs_iso_image_stager.hpp"
 #include "rufus/backend/standalone_filesystem_stager.hpp"
@@ -410,9 +414,15 @@ MainWindow::~MainWindow() {
 
 void MainWindow::buildUi() {
   const auto platform = core::platformName(core::currentPlatform());
-  setWindowTitle(fromView(core::ApplicationInfo::displayName) + " v" +
-                 fromView(core::ApplicationInfo::version));
-  setMinimumSize(490, 580);
+  QString windowTitle = fromView(core::ApplicationInfo::displayName) + " v" +
+                        fromView(core::ApplicationInfo::version);
+#if defined(Q_OS_MACOS) && RUFUSPP_MACOS_UNSIGNED_ROOT_MODE
+  const bool rootPrivilegesActive = geteuid() == 0;
+  windowTitle += rootPrivilegesActive
+                     ? " — UNSIGNED ROOT BUILD"
+                     : " — RESTRICTED BUILD";
+#endif
+  setWindowTitle(windowTitle);
   resize(490, 580);
 
   auto* central = new QWidget(this);
@@ -846,7 +856,25 @@ void MainWindow::buildUi() {
   setCentralWidget(central);
   statusBar()->setSizeGripEnabled(false);
   statusBar()->showMessage("Ready — select an image and eligible target");
+#if defined(Q_OS_MACOS) && RUFUSPP_MACOS_UNSIGNED_ROOT_MODE
+  auto* rootModeLabel = new QLabel(
+      rootPrivilegesActive ? "UNSIGNED ROOT BUILD" : "RESTRICTED BUILD",
+      this);
+  rootModeLabel->setToolTip(
+      rootPrivilegesActive
+          ? "Development-only mode: the complete application is currently running as root."
+          : "The root-mode development build is running unprivileged; physical-device operations are disabled.");
+  rootModeLabel->setStyleSheet(
+      rootPrivilegesActive
+          ? "QLabel { background: #9b2c2c; color: white; font-weight: 700; padding: 2px 7px; border-radius: 3px; }"
+          : "QLabel { background: #9a6700; color: white; font-weight: 700; padding: 2px 7px; border-radius: 3px; }");
+  statusBar()->addPermanentWidget(rootModeLabel);
+  appendLog(rootPrivilegesActive
+                ? "WARNING: Unsigned root mode is active. Physical-device operations use whole-process root privileges."
+                : "RESTRICTED: This unsigned root-mode build is running unprivileged. Physical-device operations are disabled; launch from Terminal with sudo to enable them.");
+#endif
   appendLog("Qt user interface initialized on " + fromView(platform) + '.');
+  scheduleWindowFitToContents();
 }
 
 void MainWindow::calculateChecksums() {
@@ -1092,7 +1120,13 @@ void MainWindow::showDiagnostics() {
 
   report += "\nPrivilege boundary\n";
 #if defined(Q_OS_MACOS)
+#if RUFUSPP_MACOS_UNSIGNED_ROOT_MODE
+  report += geteuid() == 0
+                ? "  UNSIGNED ROOT BUILD: development-only whole-process elevation is active. Physical-device operations retain per-operation identity revalidation.\n"
+                : "  RESTRICTED BUILD: the unsigned development process is unprivileged and physical-device operations are disabled. Launch from Terminal with sudo to enable them.\n";
+#else
   report += "  Authenticated, signed XPC helper; the Qt UI remains unprivileged.\n";
+#endif
 #elif defined(Q_OS_WIN)
   report += "  Elevated process with per-operation identity revalidation and exclusive handles. A split Windows helper remains a hardening opportunity.\n";
 #else
@@ -2544,6 +2578,7 @@ void MainWindow::applyImageProfile() {
     windowsToGoOptionsButton_->hide();
     volumeLabel_->setEnabled(false);
     updateRuntimeValidationAvailability();
+    scheduleWindowFitToContents();
     return;
   }
 
@@ -2617,6 +2652,7 @@ void MainWindow::applyImageProfile() {
       operation == "windows-to-go" ? "Configure Windows To Go options"
                                     : "Configure Windows installation options");
   updateRuntimeValidationAvailability();
+  scheduleWindowFitToContents();
 }
 
 void MainWindow::configureWindowsExperience() {
@@ -3063,7 +3099,12 @@ void MainWindow::startWrite() {
                                          *selectedImage_, target)
                                    : deviceBackend_->rawWriteAvailability(target);
   preflightInput.dependencies.push_back(
-      {macOsInstallerMode ? "Apple createinstallmedia + privileged helper"
+      {macOsInstallerMode
+#if defined(Q_OS_MACOS) && RUFUSPP_MACOS_UNSIGNED_ROOT_MODE
+           ? "Apple createinstallmedia + unsigned root process"
+#else
+           ? "Apple createinstallmedia + privileged helper"
+#endif
        : ffuMode ? "Windows DISM FFU provider"
                  : "Guarded raw-device writer",
        true, rawAvailability.available, rawAvailability.reason});
@@ -3890,6 +3931,7 @@ void MainWindow::toggleDriveAdvanced(const bool expanded) {
   driveAdvancedButton_->setArrowType(expanded ? Qt::UpArrow : Qt::DownArrow);
   driveAdvancedButton_->setText(expanded ? "Hide advanced drive properties"
                                          : "Show advanced drive properties");
+  scheduleWindowFitToContents();
 }
 
 void MainWindow::toggleFormatAdvanced(const bool expanded) {
@@ -3897,6 +3939,7 @@ void MainWindow::toggleFormatAdvanced(const bool expanded) {
   formatAdvancedButton_->setArrowType(expanded ? Qt::UpArrow : Qt::DownArrow);
   formatAdvancedButton_->setText(expanded ? "Hide advanced format options"
                                           : "Show advanced format options");
+  scheduleWindowFitToContents();
 }
 
 void MainWindow::toggleLog() {
@@ -3904,6 +3947,33 @@ void MainWindow::toggleLog() {
   if (logView_->isVisible()) {
     logView_->setFocus();
   }
+  scheduleWindowFitToContents();
+}
+
+void MainWindow::scheduleWindowFitToContents() {
+  if (windowFitPending_) {
+    return;
+  }
+  windowFitPending_ = true;
+  QTimer::singleShot(0, this, [this] {
+    windowFitPending_ = false;
+    QWidget* content = centralWidget();
+    if (content == nullptr || content->layout() == nullptr) {
+      return;
+    }
+    content->layout()->invalidate();
+    content->layout()->activate();
+
+    const QSize minimumContent = content->minimumSizeHint();
+    const int windowChromeWidth = std::max(0, width() - content->width());
+    const int windowChromeHeight = std::max(0, height() - content->height());
+    constexpr int minimumWindowWidth = 490;
+    const QSize fittedSize{
+        std::max(minimumWindowWidth,
+                 minimumContent.width() + windowChromeWidth),
+        minimumContent.height() + windowChromeHeight};
+    setFixedSize(fittedSize);
+  });
 }
 
 void MainWindow::appendLog(const QString& message) {

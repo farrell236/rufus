@@ -15,6 +15,11 @@
 #include <fstream>
 #include <iostream>
 #include <string>
+#include <string_view>
+
+#if defined(__APPLE__)
+#include <unistd.h>
+#endif
 
 #include "rufus/backend/block_device_backend.hpp"
 #include "rufus/backend/ntfs_iso_image_stager.hpp"
@@ -57,6 +62,25 @@ int main() {
     std::cerr << "the macOS backend must expose native installer creation\n";
     return EXIT_FAILURE;
   }
+#if RUFUSPP_MACOS_UNSIGNED_ROOT_MODE
+  if (backend->name().find("unsigned root mode") == std::string_view::npos) {
+    std::cerr << "the macOS root-mode backend must identify its privilege boundary\n";
+    return EXIT_FAILURE;
+  }
+  const auto rootAuthorization = backend->requestRawWriteAuthorization();
+  if (geteuid() == 0) {
+    if (!rootAuthorization.available ||
+        rootAuthorization.authorizationCanBeRequested) {
+      std::cerr << "root mode must accept an actual root effective UID without authorization\n";
+      return EXIT_FAILURE;
+    }
+  } else if (rootAuthorization.available ||
+             rootAuthorization.authorizationCanBeRequested ||
+             rootAuthorization.reason.find("sudo") == std::string::npos) {
+    std::cerr << "root mode must reject a non-root process with sudo guidance\n";
+    return EXIT_FAILURE;
+  }
+#endif
 #else
   if (capabilities.macOsInstallerCreation) {
     std::cerr << "non-macOS backends must not advertise macOS installer creation\n";

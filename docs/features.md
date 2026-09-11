@@ -141,8 +141,10 @@ preparing a temporary Journaled HFS+ volume.
 
 The signed helper revalidates the application signature, tool interface,
 target identity, and capacity, launches fixed executables without a shell,
-relays progress, and supports cancellation. This creates macOS installation
-media, not a live or portable macOS system.
+relays progress, and supports cancellation. An explicitly compiled unsigned
+root development mode performs the same checks and local operation in the
+whole elevated process without packaging the helper. This creates macOS
+installation media, not a live or portable macOS system.
 
 ### FFU
 
@@ -256,7 +258,11 @@ Native device transports provide the following safeguards:
 
 - **macOS:** Disk Arbitration claims and whole-disk unmounting, raw geometry
   revalidation, synchronized I/O, and a mutually authenticated `SMAppService`
-  helper over XPC. Unsigned development builds cannot write physical disks.
+  helper over XPC. Ordinary unsigned builds cannot write physical disks. An
+  opt-in, visibly labelled unsigned-root development build omits the helper and
+  enables the same local operations only when the process has an effective UID
+  of zero. Its runtime indicator distinguishes `RESTRICTED BUILD` and
+  `UNSIGNED ROOT BUILD`; signed-helper builds show no build-state marker.
 - **Linux:** non-forced unmounts, an exclusive block-device handle, kernel
   geometry revalidation, cache flushing, verification, and partition-table
   rereading. The application currently requires a trusted administrator
@@ -272,18 +278,18 @@ identity immediately before destructive access.
 
 | Operation | macOS | Linux | Windows |
 | --- | --- | --- | --- |
-| Raw/DD and compressed images | Signed helper | Elevated process | Elevated process |
-| Apple installer application | `createinstallmedia` through signed helper | Unavailable | Unavailable |
+| Raw/DD and compressed images | Signed helper or development root process | Elevated process | Elevated process |
+| Apple installer application | `createinstallmedia` through signed helper or development root process | Unavailable | Unavailable |
 | FAT32 ISO and Windows Setup | Portable stager + native writer | Portable stager + native writer | Portable stager + native writer |
 | NTFS/UEFI:NTFS ISO | Host tools | Host tools, elevated | DiskPart, elevated |
 | Linux persistence | Portable stager + native writer | Portable stager + native writer | Portable stager + native writer |
 | Windows To Go | wimlib + host tools + BCD-SYS | wimlib + host tools + BCD-SYS | wimlib + DiskPart + BCDBoot |
 | FFU apply/capture | Analysis only | Analysis only | DISM, elevated |
-| DD/VHD/VHDX capture | Signed helper | Elevated process | Elevated process |
+| DD/VHD/VHDX capture | Signed helper or development root process | Elevated process | Elevated process |
 | UDF capture | `hdiutil` | `genisoimage`/`mkisofs` | User-installed `oscdimg.exe` |
 | FAT16/FAT32/ext2 format | Portable stager + native writer | Portable stager + native writer | Portable stager + native writer |
 | Host filesystem formats | exFAT/UDF; optional NTFS/ext3 | Installed tools, elevated | DiskPart, elevated |
-| Bad-block testing | Signed helper | Elevated process | Elevated process |
+| Bad-block testing | Signed helper or development root process | Elevated process | Elevated process |
 
 Dependency-gated operations remain disabled until their complete provider
 reports available. They do not fall back to a similarly named but incomplete
@@ -313,7 +319,8 @@ The base Qt application requires:
 - **FFU:** Windows DISM with `/Apply-Ffu` or `/Capture-Ffu`.
 - **macOS installer media:** macOS 13 or later, a complete Apple-signed
   installer containing `createinstallmedia`, a signed and registered Rufus++
-  helper, and a target of at least 16 GiB. A 32 GB target is recommended.
+  helper (or an explicitly compiled development root-mode app), and a target of
+  at least 16 GiB. A 32 GB target is recommended.
 - **Host filesystem formats:** macOS uses `newfs_exfat`/`newfs_udf`, with
   optional `mkntfs` and `mke2fs`; Linux uses `losetup` plus the relevant
   `mkntfs`, `mkfs.exfat`, `mkudffs`, or `mkfs.ext3`; Windows uses DiskPart.
@@ -329,8 +336,9 @@ applications.
 ## Known release gaps
 
 - Release signing and distribution packaging are incomplete.
-- The macOS app/helper must be signed with a matching Apple Team ID before
-  physical writes are enabled.
+- Release macOS app/helper builds must be signed with a matching Apple Team ID
+  before physical writes are enabled. The opt-in unsigned-root mode is limited
+  to local development and hardware testing.
 - Linux and Windows still use whole-process elevation rather than dedicated
   least-privilege helpers.
 - Cross-platform removable-hardware and fault-injection qualification remains

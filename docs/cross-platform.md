@@ -10,7 +10,7 @@ The Qt application discovers whole physical devices through native platform
 backends and analyzes selected image files. Protected and fixed devices are
 hidden by default; showing them is an inspection-only operation.
 
-The macOS backend contains an experimental DD transport behind a modern
+The default macOS backend contains an experimental DD transport behind a modern
 `SMAppService` launch daemon. The signed app and helper mutually authenticate
 their designated requirements over XPC. The protocol exposes only health,
 write, progress, and cancellation messages: it has no shell-command facility.
@@ -60,8 +60,23 @@ first destructive operation; discovery metadata alone is never authorization.
 The helper is bundled under `Contents/Resources`, and its launch-daemon plist is
 bundled under `Contents/Library/LaunchDaemons`. It can be registered only when
 `RUFUSPP_MACOS_TEAM_IDENTIFIER` is configured and the app and helper have valid
-matching signatures. Ad-hoc development builds deliberately report raw access
-as unavailable. Hardware fault coverage and release signing remain outstanding.
+matching signatures. Ordinary ad-hoc development builds deliberately report
+raw access as unavailable.
+
+macOS also has an explicit development-only configuration,
+`RUFUSPP_MACOS_UNSIGNED_ROOT_MODE=ON`. It omits the helper, launch-daemon plist,
+ServiceManagement client, and signing steps from the build. The application can
+still inspect media as a normal user, but each physical raw write, destructive
+bad-block test, raw capture, and Apple installer operation checks for an actual
+effective UID of zero. These operations therefore require launching the bundle
+executable from Terminal with `sudo`. The same local transports retain target
+identity, eligibility, geometry, exclusive-claim, flush, and verification
+checks. Capture output ownership is restored from validated `SUDO_UID` and
+`SUDO_GID` values. The UI labels an ordinary launch `RESTRICTED BUILD` and a
+root launch `UNSIGNED ROOT BUILD` because only the latter makes the complete Qt
+process privileged. Signed-helper builds have no build-state marker. This mode
+is not suitable for distribution. Hardware fault coverage and release signing
+remain outstanding.
 
 Linux and Windows implement the same DD contract as direct elevated transports.
 Linux uses non-forced `umount2` operations followed by an `O_EXCL` whole-block-
@@ -84,21 +99,21 @@ work; whole-process elevation is not the final privilege boundary.
 
 | Operation | macOS | Linux | Windows |
 | --- | --- | --- | --- |
-| Raw/DD and supported compressed images | Signed helper | Elevated process | Elevated process |
-| Apple macOS installer application | Apple `createinstallmedia` through signed helper | Unavailable | Unavailable |
+| Raw/DD and supported compressed images | Signed helper, or opt-in unsigned root process for development | Elevated process | Elevated process |
+| Apple macOS installer application | Apple `createinstallmedia` through signed helper, or development root process | Unavailable | Unavailable |
 | FAT32 ISO and standard Windows Setup | Portable stager + native raw writer | Portable stager + native raw writer | Portable stager + native raw writer |
 | NTFS/UEFI:NTFS ISO | `hdiutil`/`mkntfs`/`ntfs-3g` | `losetup`/`mkntfs`/`ntfs-3g`, elevated | DiskPart, elevated |
 | Linux persistence | Portable FAT32/ext2 stager + native raw writer | Portable FAT32/ext2 stager + native raw writer | Portable FAT32/ext2 stager + native raw writer |
 | Windows To Go | wimlib + host tools + BCD-SYS | wimlib + host tools + BCD-SYS, elevated | wimlib + DiskPart + BCDBoot, elevated |
 | FFU | Analysis only | Analysis only | DISM `/Apply-Ffu`, elevated |
-| Drive capture: DD/VHD/VHDX | Signed helper + portable converter | Elevated process + portable converter | Elevated process + portable converter |
+| Drive capture: DD/VHD/VHDX | Signed helper or development root process + portable converter | Elevated process + portable converter | Elevated process + portable converter |
 | Drive capture: FFU | Unavailable | Unavailable | DISM `/Capture-Ffu`, elevated |
 | Mounted-volume UDF capture | `hdiutil makehybrid` | `genisoimage`/`mkisofs` | user-installed `oscdimg.exe` |
 | Standalone FAT16/FAT32/ext2 | Portable stager + native raw writer | Portable stager + native raw writer | Portable stager + native raw writer |
 | Standalone host filesystems | exFAT/UDF; optional NTFS/ext3 | NTFS/exFAT/UDF/ext3 tools, elevated | NTFS/exFAT/ReFS through DiskPart |
 | Blank boot media | GRUB2, Syslinux, Grub4DOS, ReactOS, FreeDOS/MS-DOS, UEFI | Same | Same |
 | Runtime UEFI validation | Packaged offline app + portable manifest | Packaged offline app + portable manifest | Packaged offline app + portable manifest |
-| Bad-block/fake-capacity test | Signed helper | Elevated process | Elevated process |
+| Bad-block/fake-capacity test | Signed helper or development root process | Elevated process | Elevated process |
 
 Each dependency-gated cell is exposed only after its complete provider reports
 available. Missing dependencies produce an actionable reason and keep START
@@ -262,7 +277,8 @@ privilege keep START disabled before destructive I/O.
 1. `rufus_plus_plus_portable_core`: operating-system-neutral value types, media analysis,
    partition planning, validation, and transformation rules.
 2. `rufus_plus_plus_platform_backend`: native Windows, Linux, and macOS physical-device
-   discovery plus guarded DD transports; macOS uses a signed-helper boundary,
+   discovery plus guarded DD transports; macOS defaults to a signed-helper
+   boundary and offers an explicit unsigned whole-process mode for development,
    while Linux/Windows currently use explicitly elevated direct transports.
 3. `rufus_plus_plus`: presentation and user interaction. The UI consumes core models
    and backend interfaces but does not perform raw I/O directly.
@@ -279,8 +295,10 @@ privilege keep START disabled before destructive I/O.
    discovery for macOS (IOKit), Linux (sysfs), and Windows (storage interfaces).
 4. **Implemented, awaiting release validation:** the macOS Disk Arbitration/raw-
    I/O transport and signed `SMAppService`/XPC helper boundary are implemented.
-   Developer ID signing, notarization, and hardware-backed fault coverage remain
-   before treating it as release-ready.
+   An opt-in, visibly labelled unsigned-root build reuses the local operations
+   for hardware development without packaging the helper. Developer ID signing,
+   notarization, and hardware-backed fault coverage remain before treating it as
+   release-ready.
 5. **Implemented, awaiting release validation:** Linux and Windows raw
    transports use the same write plan and copy engine. Dedicated least-
    privilege helpers and removable-hardware fault coverage remain outstanding.
@@ -338,9 +356,10 @@ privilege keep START disabled before destructive I/O.
     installer-application analysis, capability-driven Qt controls, target
     identity/capacity checks, optional full-device zero-fill/read verification,
     GPT/HFS+ preparation, and cancellation-aware `createinstallmedia` execution
-    are routed through the mutually authenticated helper. Installer downloads,
-    live-macOS creation, and undocumented Apple tool switches are intentionally
-    out of scope.
+    are routed through the mutually authenticated helper by default, or through
+    the explicitly selected unsigned-root development transport. Installer
+    downloads, live-macOS creation, and undocumented Apple tool switches are
+    intentionally out of scope.
 
 Windows-specific features such as ReFS and DISM/FFU operations remain optional
 capabilities instead of being emulated on platforms that cannot provide them

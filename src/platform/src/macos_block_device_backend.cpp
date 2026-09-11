@@ -30,6 +30,7 @@
 #include <cerrno>
 #include <cctype>
 #include <chrono>
+#include <cstdlib>
 #include <cstring>
 #include <cstdint>
 #include <limits>
@@ -45,7 +46,9 @@
 #include "rufus/core/image_analyzer.hpp"
 #include "rufus/core/safety_policy.hpp"
 #include "rufus/core/write_plan.hpp"
+#if !RUFUSPP_MACOS_UNSIGNED_ROOT_MODE
 #include "macos_privileged_helper_client.hpp"
+#endif
 #include "macos_installer_operations.hpp"
 #include "macos_raw_device_operations.hpp"
 
@@ -56,7 +59,11 @@ namespace {
 class MacOSBlockDeviceBackend final : public BlockDeviceBackend {
  public:
   [[nodiscard]] std::string_view name() const noexcept override {
+#if RUFUSPP_MACOS_UNSIGNED_ROOT_MODE
+    return "macOS IOKit (unsigned root mode)";
+#else
     return "macOS IOKit";
+#endif
   }
 
   [[nodiscard]] BackendCapabilities capabilities() const noexcept override {
@@ -180,10 +187,160 @@ class FileDescriptor final {
   FileDescriptor& operator=(const FileDescriptor&) = delete;
   [[nodiscard]] int get() const noexcept { return descriptor_; }
   [[nodiscard]] bool valid() const noexcept { return descriptor_ >= 0; }
+  void reset() noexcept {
+    if (descriptor_ >= 0) {
+      close(descriptor_);
+      descriptor_ = -1;
+    }
+  }
 
  private:
   int descriptor_;
 };
+
+RawWriteAvailability macOsPrivilegeAvailability() {
+#if RUFUSPP_MACOS_UNSIGNED_ROOT_MODE
+  if (geteuid() != 0) {
+    return {
+        false, false,
+        "This unsigned root-mode build must be launched from Terminal with sudo before physical-device operations are enabled"};
+  }
+  return {true, false,
+          "Unsigned root mode is active; the complete Rufus++ process is running as root"};
+#else
+  return macos::privilegedHelperAvailability();
+#endif
+}
+
+#if RUFUSPP_MACOS_UNSIGNED_ROOT_MODE
+std::string localOperationId() {
+  return "root-" + std::to_string(getpid()) + '-' +
+         std::to_string(
+             std::chrono::steady_clock::now().time_since_epoch().count());
+}
+
+template <typename Identifier>
+std::optional<Identifier> parseSudoIdentifier(const char* value) {
+  if (value == nullptr || *value == '\0') {
+    return std::nullopt;
+  }
+  errno = 0;
+  char* end = nullptr;
+  const unsigned long long parsed = std::strtoull(value, &end, 10);
+  if (errno != 0 || end == value || *end != '\0' ||
+      parsed > std::numeric_limits<Identifier>::max()) {
+    return std::nullopt;
+  }
+  return static_cast<Identifier>(parsed);
+}
+
+bool restoreInvokingUserOwnership(const int descriptor, std::string& error) {
+  if (geteuid() != 0) {
+    return true;
+  }
+  const char* uidText = std::getenv("SUDO_UID");
+  const char* gidText = std::getenv("SUDO_GID");
+  if (uidText == nullptr && gidText == nullptr) {
+    return true;
+  }
+  const auto uid = parseSudoIdentifier<uid_t>(uidText);
+  const auto gid = parseSudoIdentifier<gid_t>(gidText);
+  if (!uid || !gid) {
+    error = "The sudo caller identity is incomplete or invalid; refusing to create a root-owned capture";
+    return false;
+  }
+  if (fchown(descriptor, *uid, *gid) != 0) {
+    error = errorMessage("Unable to restore capture ownership", errno);
+    return false;
+  }
+  return true;
+}
+
+bool restoreInvokingUserOwnership(const std::filesystem::path& path,
+                                  std::string& error) {
+  FileDescriptor output(open(path.c_str(), O_RDONLY | O_CLOEXEC | O_NOFOLLOW));
+  if (!output.valid()) {
+    error = errorMessage("Unable to reopen the capture to restore ownership", errno);
+    return false;
+  }
+  struct stat status {};
+  if (fstat(output.get(), &status) != 0 || !S_ISREG(status.st_mode) ||
+      status.st_nlink != 1) {
+    error = "The completed capture is no longer a private regular file";
+    return false;
+  }
+  return restoreInvokingUserOwnership(output.get(), error);
+}
+
+core::MediaCaptureResult captureRawInUnsignedRootMode(
+    const core::BlockDeviceInfo& source,
+    const std::filesystem::path& destination,
+    const core::MediaCaptureOptions& options,
+    const core::MediaCaptureProgressCallback& onProgress,
+    const core::MediaCaptureCancelCallback& isCancelled) {
+  core::MediaCaptureResult result;
+  const auto privilege = macOsPrivilegeAvailability();
+  if (!privilege.available) {
+    result.error = privilege.reason;
+    return result;
+  }
+  if (options.format != core::MediaCaptureFormat::Raw || destination.empty()) {
+    result.error = "The macOS root-mode transport accepts only a valid raw capture destination";
+    return result;
+  }
+  std::error_code fileError;
+  if (std::filesystem::exists(destination, fileError) || fileError) {
+    result.error = fileError ? "Unable to inspect the capture destination: " +
+                                   fileError.message()
+                             : "The capture destination already exists";
+    return result;
+  }
+  const auto parent = destination.parent_path().empty()
+                          ? std::filesystem::current_path(fileError)
+                          : destination.parent_path();
+  if (fileError || !std::filesystem::is_directory(parent, fileError) ||
+      fileError) {
+    result.error = "The capture destination directory is unavailable";
+    return result;
+  }
+  auto partial = destination;
+  partial += ".rufus-plus-plus-capture-" + localOperationId();
+  FileDescriptor output(open(partial.c_str(),
+                             O_CREAT | O_EXCL | O_RDWR | O_CLOEXEC | O_NOFOLLOW,
+                             S_IRUSR | S_IWUSR));
+  if (!output.valid()) {
+    result.error = errorMessage("Unable to create the private capture output", errno);
+    return result;
+  }
+  struct PartialCleanup final {
+    std::filesystem::path path;
+    bool committed{};
+    ~PartialCleanup() {
+      if (!committed) {
+        std::error_code ignored;
+        std::filesystem::remove(path, ignored);
+      }
+    }
+  } cleanup{partial};
+  if (!restoreInvokingUserOwnership(output.get(), result.error)) {
+    return result;
+  }
+  result = macos::captureRawLocally(source, output.get(), options, onProgress,
+                                    isCancelled);
+  output.reset();
+  if (!result.success) {
+    return result;
+  }
+  std::filesystem::rename(partial, destination, fileError);
+  if (fileError) {
+    result.success = false;
+    result.error = "Unable to commit the raw capture: " + fileError.message();
+    return result;
+  }
+  cleanup.committed = true;
+  return result;
+}
+#endif
 
 struct DiskArbitrationOperation final {
   CFRunLoopRef runLoop{};
@@ -671,11 +828,15 @@ RawWriteAvailability MacOSBlockDeviceBackend::rawWriteAvailability(
   if (rawPath.empty()) {
     return {false, false, "The target is not a whole macOS disk path"};
   }
-  return macos::privilegedHelperAvailability();
+  return macOsPrivilegeAvailability();
 }
 
 RawWriteAvailability MacOSBlockDeviceBackend::requestRawWriteAuthorization() const {
+#if RUFUSPP_MACOS_UNSIGNED_ROOT_MODE
+  return macOsPrivilegeAvailability();
+#else
   return macos::requestPrivilegedHelperAuthorization();
+#endif
 }
 
 core::MacOsInstallerAnalysisResult
@@ -703,7 +864,7 @@ RawWriteAvailability MacOSBlockDeviceBackend::macOsInstallerAvailability(
     return {false, false,
             "The target is smaller than the 16 GiB minimum for a macOS installer"};
   }
-  return macos::privilegedHelperAvailability();
+  return macOsPrivilegeAvailability();
 }
 
 core::RawWriteResult MacOSBlockDeviceBackend::createMacOsInstaller(
@@ -711,8 +872,20 @@ core::RawWriteResult MacOSBlockDeviceBackend::createMacOsInstaller(
     const core::BlockDeviceInfo& target, const bool fullWipe,
     const core::MacOsInstallerProgressCallback& onProgress,
     const core::MacOsInstallerCancelCallback& isCancelled) const {
+#if RUFUSPP_MACOS_UNSIGNED_ROOT_MODE
+  core::RawWriteResult result;
+  const auto availability = macOsInstallerAvailability(installer, target);
+  if (!availability.available) {
+    result.error = availability.reason;
+    return result;
+  }
+  return macos::createInstallerLocally(installer, target, fullWipe,
+                                       localOperationId(), onProgress,
+                                       isCancelled);
+#else
   return macos::createMacOsInstallerWithPrivilegedHelper(
       installer, target, fullWipe, onProgress, isCancelled);
+#endif
 }
 
 core::RawWriteResult writeRawLocallyInternal(
@@ -1382,7 +1555,23 @@ core::RawWriteResult MacOSBlockDeviceBackend::writeRaw(
     const core::RawWritePlan& plan,
     const core::RawWriteProgressCallback& onProgress,
     const core::RawWriteCancelCallback& isCancelled) const {
+#if RUFUSPP_MACOS_UNSIGNED_ROOT_MODE
+  core::RawWriteResult result;
+  const auto availability = rawWriteAvailability(plan.target());
+  if (!availability.available) {
+    result.error = availability.reason;
+    return result;
+  }
+  auto source = core::openRawImageSource(plan.image());
+  if (!source.succeeded()) {
+    result.error = source.error;
+    return result;
+  }
+  return macos::writeRawLocally(plan, source.source.get(), onProgress,
+                                isCancelled);
+#else
   return macos::writeRawWithPrivilegedHelper(plan, onProgress, isCancelled);
+#endif
 }
 
 RawWriteAvailability MacOSBlockDeviceBackend::badBlockTestAvailability(
@@ -1395,8 +1584,19 @@ core::BadBlockTestResult MacOSBlockDeviceBackend::testBadBlocks(
     const core::BadBlockTestOptions& options,
     const core::BadBlockTestProgressCallback& onProgress,
     const core::BadBlockTestCancelCallback& isCancelled) const {
+#if RUFUSPP_MACOS_UNSIGNED_ROOT_MODE
+  core::BadBlockTestResult result;
+  const auto availability = badBlockTestAvailability(target);
+  if (!availability.available) {
+    result.error = availability.reason;
+    return result;
+  }
+  return macos::testBadBlocksLocally(target, options, onProgress,
+                                     isCancelled);
+#else
   return macos::testBadBlocksWithPrivilegedHelper(target, options, onProgress,
                                                    isCancelled);
+#endif
 }
 
 RawWriteAvailability MacOSBlockDeviceBackend::captureAvailability(
@@ -1444,12 +1644,26 @@ core::MediaCaptureResult MacOSBlockDeviceBackend::capture(
     const core::MediaCaptureProgressCallback& onProgress,
     const core::MediaCaptureCancelCallback& isCancelled) const {
   if (options.format == core::MediaCaptureFormat::Raw) {
+#if RUFUSPP_MACOS_UNSIGNED_ROOT_MODE
+    return captureRawInUnsignedRootMode(target, destination, options,
+                                        onProgress, isCancelled);
+#else
     return macos::captureRawWithPrivilegedHelper(
         target, destination, options, onProgress, isCancelled);
+#endif
   }
   if (options.format == core::MediaCaptureFormat::UdfIso) {
-    return captureUdfIsoLocally(target, destination, onProgress,
-                                isCancelled);
+    auto result = captureUdfIsoLocally(target, destination, onProgress,
+                                       isCancelled);
+#if RUFUSPP_MACOS_UNSIGNED_ROOT_MODE
+    if (result.success &&
+        !restoreInvokingUserOwnership(destination, result.error)) {
+      result.success = false;
+      std::error_code ignored;
+      std::filesystem::remove(destination, ignored);
+    }
+#endif
+    return result;
   }
   core::MediaCaptureResult result;
   const auto availability = captureAvailability(target, options.format);
@@ -1480,8 +1694,13 @@ core::MediaCaptureResult MacOSBlockDeviceBackend::capture(
   } cleanup{rawIntermediate};
   const core::MediaCaptureOptions rawOptions{
       core::MediaCaptureFormat::Raw, options.transferBytes, true};
+#if RUFUSPP_MACOS_UNSIGNED_ROOT_MODE
+  const auto raw = captureRawInUnsignedRootMode(
+      target, rawIntermediate, rawOptions, onProgress, isCancelled);
+#else
   const auto raw = macos::captureRawWithPrivilegedHelper(
       target, rawIntermediate, rawOptions, onProgress, isCancelled);
+#endif
   if (!raw.success) {
     return raw;
   }
@@ -1500,8 +1719,17 @@ core::MediaCaptureResult MacOSBlockDeviceBackend::capture(
     return result;
   }
   const core::MediaCaptureWriter writer;
-  return writer.capture(*source.source, destination, options, onProgress,
-                        isCancelled);
+  result = writer.capture(*source.source, destination, options, onProgress,
+                          isCancelled);
+#if RUFUSPP_MACOS_UNSIGNED_ROOT_MODE
+  if (result.success &&
+      !restoreInvokingUserOwnership(destination, result.error)) {
+    result.success = false;
+    std::error_code ignored;
+    std::filesystem::remove(destination, ignored);
+  }
+#endif
+  return result;
 }
 
 }  // namespace

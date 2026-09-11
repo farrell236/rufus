@@ -51,10 +51,29 @@ ctest --preset core-only
 The resulting Qt executable is placed under `build/dev/src/qt`. On macOS it is
 the `Rufus++.app` bundle.
 
-An unsigned macOS development build can inspect media but cannot write to a
-physical disk. Write-enabled builds require a matching Apple Team ID and code
-signing identity for the app and privileged helper; see the platform
-documentation below.
+By default, an unsigned macOS development build can inspect media but cannot
+write to a physical disk. Write-enabled release builds require a matching Apple
+Team ID and code-signing identity for the app and privileged helper.
+
+For local removable-media development only, an alternate whole-process root
+mode can be compiled without the helper or code signing:
+
+```console
+cmake --preset dev -DRUFUSPP_MACOS_UNSIGNED_ROOT_MODE=ON
+cmake --build --preset dev
+sudo "build/dev/src/qt/Rufus++.app/Contents/MacOS/Rufus++"
+```
+
+The build and current privilege state are shown in the window title, status
+bar, log, and diagnostics. A normal launch is labelled `RESTRICTED BUILD`; a
+`sudo` launch is labelled `UNSIGNED ROOT BUILD`. Signed-helper builds show no
+build-state marker. The backend checks the effective UID again at every
+physical-device entry point and keeps per-operation target revalidation, but
+the complete Qt process runs as root when enabled.
+It is strictly a development and hardware-testing option, not a release
+security boundary. Set the option back to `OFF` before configuring a signed
+build; it cannot be combined with the Team ID or signing-identity settings.
+See the platform documentation below for details.
 
 ## Documentation
 

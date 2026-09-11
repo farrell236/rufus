@@ -27,34 +27,44 @@ if(APPLE)
   set_target_properties(rufus_plus_plus PROPERTIES
     MACOSX_BUNDLE_GUI_IDENTIFIER "${RUFUSPP_MACOS_APP_IDENTIFIER}"
   )
-  add_dependencies(rufus_plus_plus rufus_plus_plus_privileged_helper)
-  add_custom_command(TARGET rufus_plus_plus POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E make_directory
-            "$<TARGET_BUNDLE_DIR:rufus_plus_plus>/Contents/Resources"
-    COMMAND ${CMAKE_COMMAND} -E make_directory
-            "$<TARGET_BUNDLE_DIR:rufus_plus_plus>/Contents/Library/LaunchDaemons"
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            "$<TARGET_FILE:rufus_plus_plus_privileged_helper>"
-            "$<TARGET_BUNDLE_DIR:rufus_plus_plus>/Contents/Resources/rufus-plus-plus-privileged-helper"
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            "${CMAKE_CURRENT_BINARY_DIR}/../platform/${RUFUSPP_MACOS_HELPER_IDENTIFIER}.plist"
-            "$<TARGET_BUNDLE_DIR:rufus_plus_plus>/Contents/Library/LaunchDaemons/${RUFUSPP_MACOS_HELPER_IDENTIFIER}.plist"
-    VERBATIM
-  )
-
-  if(RUFUSPP_MACOS_CODE_SIGN_IDENTITY)
-    find_program(CODESIGN_EXECUTABLE codesign REQUIRED)
+  if(RUFUSPP_MACOS_UNSIGNED_ROOT_MODE)
     add_custom_command(TARGET rufus_plus_plus POST_BUILD
-      COMMAND ${CODESIGN_EXECUTABLE} --force --options runtime --timestamp
-              --identifier "${RUFUSPP_MACOS_HELPER_IDENTIFIER}"
-              --sign "${RUFUSPP_MACOS_CODE_SIGN_IDENTITY}"
+      COMMAND ${CMAKE_COMMAND} -E rm -f
               "$<TARGET_BUNDLE_DIR:rufus_plus_plus>/Contents/Resources/rufus-plus-plus-privileged-helper"
-      COMMAND ${CODESIGN_EXECUTABLE} --force --options runtime --timestamp
-              --identifier "${RUFUSPP_MACOS_APP_IDENTIFIER}"
-              --sign "${RUFUSPP_MACOS_CODE_SIGN_IDENTITY}"
-              "$<TARGET_BUNDLE_DIR:rufus_plus_plus>"
+      COMMAND ${CMAKE_COMMAND} -E rm -f
+              "$<TARGET_BUNDLE_DIR:rufus_plus_plus>/Contents/Library/LaunchDaemons/${RUFUSPP_MACOS_HELPER_IDENTIFIER}.plist"
       VERBATIM
     )
+  else()
+    add_dependencies(rufus_plus_plus rufus_plus_plus_privileged_helper)
+    add_custom_command(TARGET rufus_plus_plus POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E make_directory
+              "$<TARGET_BUNDLE_DIR:rufus_plus_plus>/Contents/Resources"
+      COMMAND ${CMAKE_COMMAND} -E make_directory
+              "$<TARGET_BUNDLE_DIR:rufus_plus_plus>/Contents/Library/LaunchDaemons"
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different
+              "$<TARGET_FILE:rufus_plus_plus_privileged_helper>"
+              "$<TARGET_BUNDLE_DIR:rufus_plus_plus>/Contents/Resources/rufus-plus-plus-privileged-helper"
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different
+              "${CMAKE_CURRENT_BINARY_DIR}/../platform/${RUFUSPP_MACOS_HELPER_IDENTIFIER}.plist"
+              "$<TARGET_BUNDLE_DIR:rufus_plus_plus>/Contents/Library/LaunchDaemons/${RUFUSPP_MACOS_HELPER_IDENTIFIER}.plist"
+      VERBATIM
+    )
+
+    if(RUFUSPP_MACOS_CODE_SIGN_IDENTITY)
+      find_program(CODESIGN_EXECUTABLE codesign REQUIRED)
+      add_custom_command(TARGET rufus_plus_plus POST_BUILD
+        COMMAND ${CODESIGN_EXECUTABLE} --force --options runtime --timestamp
+                --identifier "${RUFUSPP_MACOS_HELPER_IDENTIFIER}"
+                --sign "${RUFUSPP_MACOS_CODE_SIGN_IDENTITY}"
+                "$<TARGET_BUNDLE_DIR:rufus_plus_plus>/Contents/Resources/rufus-plus-plus-privileged-helper"
+        COMMAND ${CODESIGN_EXECUTABLE} --force --options runtime --timestamp
+                --identifier "${RUFUSPP_MACOS_APP_IDENTIFIER}"
+                --sign "${RUFUSPP_MACOS_CODE_SIGN_IDENTITY}"
+                "$<TARGET_BUNDLE_DIR:rufus_plus_plus>"
+        VERBATIM
+      )
+    endif()
   endif()
 endif()
 
@@ -94,14 +104,29 @@ if(BUILD_TESTING)
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
     TIMEOUT 15
   )
+  add_test(NAME qt-adaptive-window COMMAND rufus_plus_plus --verify-window-sizing)
+  set_tests_properties(qt-adaptive-window PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+    TIMEOUT 15
+  )
   if(APPLE)
-    add_test(
-      NAME macos-helper-bundle
-      COMMAND ${CMAKE_COMMAND}
-              "-DAPP_BUNDLE=$<TARGET_BUNDLE_DIR:rufus_plus_plus>"
-              "-DAPP_IDENTIFIER=${RUFUSPP_MACOS_APP_IDENTIFIER}"
-              "-DHELPER_IDENTIFIER=${RUFUSPP_MACOS_HELPER_IDENTIFIER}"
-              -P "${PROJECT_SOURCE_DIR}/tests/verify_macos_helper_bundle.cmake"
-    )
+    if(RUFUSPP_MACOS_UNSIGNED_ROOT_MODE)
+      add_test(
+        NAME macos-unsigned-root-bundle
+        COMMAND ${CMAKE_COMMAND}
+                "-DAPP_BUNDLE=$<TARGET_BUNDLE_DIR:rufus_plus_plus>"
+                "-DHELPER_IDENTIFIER=${RUFUSPP_MACOS_HELPER_IDENTIFIER}"
+                -P "${PROJECT_SOURCE_DIR}/tests/verify_macos_unsigned_root_bundle.cmake"
+      )
+    else()
+      add_test(
+        NAME macos-helper-bundle
+        COMMAND ${CMAKE_COMMAND}
+                "-DAPP_BUNDLE=$<TARGET_BUNDLE_DIR:rufus_plus_plus>"
+                "-DAPP_IDENTIFIER=${RUFUSPP_MACOS_APP_IDENTIFIER}"
+                "-DHELPER_IDENTIFIER=${RUFUSPP_MACOS_HELPER_IDENTIFIER}"
+                -P "${PROJECT_SOURCE_DIR}/tests/verify_macos_helper_bundle.cmake"
+      )
+    endif()
   endif()
 endif()

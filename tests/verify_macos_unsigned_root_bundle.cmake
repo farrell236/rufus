@@ -1,0 +1,16 @@
+if(NOT DEFINED APP_BUNDLE OR NOT DEFINED HELPER_IDENTIFIER)
+  message(FATAL_ERROR "macOS unsigned-root bundle test is missing configuration")
+endif()
+
+if(NOT IS_DIRECTORY "${APP_BUNDLE}")
+  message(FATAL_ERROR "macOS application bundle is missing: ${APP_BUNDLE}")
+endif()
+
+set(helper "${APP_BUNDLE}/Contents/Resources/rufus-plus-plus-privileged-helper")
+set(plist "${APP_BUNDLE}/Contents/Library/LaunchDaemons/${HELPER_IDENTIFIER}.plist")
+if(EXISTS "${helper}")
+  message(FATAL_ERROR "Unsigned-root bundle unexpectedly contains a privileged helper")
+endif()
+if(EXISTS "${plist}")
+  message(FATAL_ERROR "Unsigned-root bundle unexpectedly contains a launch-daemon plist")
+endif()
