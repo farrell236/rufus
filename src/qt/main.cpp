@@ -208,6 +208,26 @@ int main(int argc, char* argv[]) {
   rufus::qt::MainWindow window;
   window.show();
 
+  const qsizetype documentationArgument =
+      application.arguments().indexOf("--generate-documentation-screenshots");
+  if (documentationArgument >= 0) {
+    const QStringList arguments = application.arguments();
+    if (documentationArgument + 1 >= arguments.size()) {
+      qCritical() << "--generate-documentation-screenshots requires an output directory";
+      return 2;
+    }
+    QString error;
+    if (!window.generateDocumentationScreenshots(
+            arguments.at(documentationArgument + 1), error)) {
+      qCritical().noquote() << error;
+      return 1;
+    }
+    qInfo().noquote()
+        << "Documentation screenshots written to"
+        << arguments.at(documentationArgument + 1);
+    return 0;
+  }
+
   if (application.arguments().contains("--verify-privilege-indicator")) {
     const auto* indicator = window.findChild<QLabel*>("privilegeIndicator");
     const QStringList validLabels{

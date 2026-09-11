@@ -82,6 +82,7 @@ See the platform documentation below for details.
 
 ## Documentation
 
+- [User guide](docs/documentation.md)
 - [Features and runtime requirements](docs/features.md)
 - [Architecture, safety model, and platform backends](docs/cross-platform.md)
 - [Automated builds and releases](docs/releases.md)

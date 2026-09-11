@@ -884,11 +884,11 @@ bool MainWindow::updatePrivilegeIndicator() {
   switch (status.route) {
     case backend::PrivilegeRoute::Unprivileged:
       privilegeLabel_->setStyleSheet(
-          "QLabel { background: #9a6700; color: white; font-weight: 700; padding: 2px 7px; border-radius: 3px; }");
+          "QLabel { background: #9b2c2c; color: white; font-weight: 700; padding: 2px 7px; border-radius: 3px; }");
       break;
     case backend::PrivilegeRoute::Elevated:
       privilegeLabel_->setStyleSheet(
-          "QLabel { background: #9b2c2c; color: white; font-weight: 700; padding: 2px 7px; border-radius: 3px; }");
+          "QLabel { background: #1a7f37; color: white; font-weight: 700; padding: 2px 7px; border-radius: 3px; }");
       break;
     case backend::PrivilegeRoute::PrivilegedHelper:
       privilegeLabel_->setStyleSheet(

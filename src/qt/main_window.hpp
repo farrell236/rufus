@@ -63,11 +63,16 @@ struct RuntimeUefiValidationAssets;
 namespace rufus::qt {
 
 class MainWindow final : public QMainWindow {
-  Q_OBJECT
+ Q_OBJECT
 
  public:
   explicit MainWindow(QWidget* parent = nullptr);
   ~MainWindow() override;
+
+  // Renders the real Qt widgets in deterministic, non-destructive demo states
+  // for the checked-in user guide. No device is opened and no source is read.
+  [[nodiscard]] bool generateDocumentationScreenshots(
+      const QString& outputDirectory, QString& error);
 
  protected:
   void closeEvent(QCloseEvent* event) override;

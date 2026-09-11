@@ -3,6 +3,7 @@ find_package(Qt6 6.5 REQUIRED COMPONENTS Network Widgets)
 qt_standard_project_setup()
 
 qt_add_executable(rufus_plus_plus
+  documentation_screenshots.cpp
   main.cpp
   main_window.cpp
   main_window.hpp
