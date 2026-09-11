@@ -3981,8 +3981,8 @@ void MainWindow::fitWindowToContents() {
   const QSize minimumContent = content->layout()->totalMinimumSize();
   constexpr int minimumWindowWidth = 490;
   const QSize fittedSize{
-      std::max(minimumWindowWidth,
-               minimumContent.width() + windowChromeWidth),
+      std::max({minimumWindowWidth, width(),
+                minimumContent.width() + windowChromeWidth}),
       minimumContent.height() + windowChromeHeight};
   setFixedSize(fittedSize);
 }
